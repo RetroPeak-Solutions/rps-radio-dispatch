@@ -65,7 +65,7 @@ export default function Navbar() {
             <span className="rounded-lg bg-[#3C83F6]/20 p-2 text-[#8DB6FF]">
               <Radio className="h-4 w-4" />
             </span>
-            <span className="text-sm font-semibold">RetroRadio | Client Portal</span>
+            <span className="text-sm font-semibold">RetroRadio | Dispatch Portal</span>
           </NavLink>
 
           <nav className="flex items-center gap-2">
