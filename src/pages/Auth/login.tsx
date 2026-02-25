@@ -7,17 +7,18 @@ import { Shield, Users, Mail, Lock, Eye, EyeOff } from "lucide-react";
 import "../../Layouts/Auth/autofill.css";
 import ErrorFallback from "../../Wrappers/Error/ErrorFallback";
 import { AuthLogin, AuthUser } from "../../utils/link";
+import { useLoading } from "../../context/Loading";
 
 export function ErrorBoundary() {
   return <ErrorFallback />;
 }
 
 export default function FuturisticLogin() {
+  const { setLoading, isLoading: loading } = useLoading();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -48,6 +49,10 @@ export default function FuturisticLogin() {
     }
   };
 
+  useEffect(() => {
+    setLoading(false);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-background text-foreground selection:bg-primary/20">
 
@@ -69,11 +74,11 @@ export default function FuturisticLogin() {
           System
         </h1>
         <p className="text-lg text-muted-foreground max-w-md leading-relaxed mb-12">
-          Complete dispatch solution for gaming communities. Real Motorola tones,
-          live unit tracking, and secure channels for FiveM and simulation servers.
+          Complete Radio Dispatch solution for gaming communities. Real Motorola tones,
+          and secure channels for FiveM Communities.
         </p>
 
-        <div className="grid grid-cols-3 gap-10 max-w-md">
+        {/* <div className="grid grid-cols-3 gap-10 max-w-md">
           <div>
             <h3 className="text-4xl font-display font-bold">1.2k+</h3>
             <p className="text-sm text-muted-foreground uppercase tracking-wide">Active Units</p>
@@ -86,7 +91,7 @@ export default function FuturisticLogin() {
             <h3 className="text-4xl font-display font-bold">99.9%</h3>
             <p className="text-sm text-muted-foreground uppercase tracking-wide">Uptime</p>
           </div>
-        </div>
+        </div> */}
       </motion.div>
 
       {/* Right: Login Form */}
@@ -170,7 +175,7 @@ export default function FuturisticLogin() {
             </div>
 
             <div className="flex justify-end">
-              <a href="/auth/forgot-password" className="text-sm text-primary hover:underline">Forgot password?</a>
+              <a href="/#/auth/forgot-password" className="text-sm text-primary hover:underline">Forgot password?</a>
             </div>
 
             {/* Modern Login Button with animated gradient */}
@@ -189,9 +194,9 @@ export default function FuturisticLogin() {
 
           </form>
 
-          <p className="mt-8 text-center text-muted-foreground text-sm">
+          {/* <p className="mt-8 text-center text-muted-foreground text-sm">
             Don’t have an account? <a href="/auth/register" className="text-primary hover:underline">Sign up</a>
-          </p>
+          </p> */}
 
           <div className="mt-12 flex justify-center gap-6">
             <button className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] text-sm mb-6">

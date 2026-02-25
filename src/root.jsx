@@ -11,9 +11,11 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import { ThemeProvider } from "flowbite-react";
 import { SocketProvider } from "./context/SocketProvider";
 import { ToastProvider } from "./context/ToastProvider";
+import { LoadingProvider, useLoading } from "./context/Loading";
 import { SocketLink } from "./utils/link";
 import AppRoutes from "./routes/routes.jsx";
 import { useDarkMode } from "./hooks/useDarkMode.js";
+import { LoadingOverlay } from "./components/UI/LoadingOverlay";
 
 // Fonts
 export const links = () => [
@@ -46,39 +48,12 @@ export const useTheme = () => useContext(ThemeContext);
 
 // Theme + Layout component
 export function Layout({ children }) {
+  const { setLoading, isLoading } = useLoading();
   const [darkMode, setDarkMode] = useState(true);
   const [ready, setReady] = useState(true);
-
-  // // Initialize theme only on client
-  // useEffect(() => {
-  //   const saved = localStorage.getItem("theme");
-  //   if (saved === "dark") setDarkMode(true);
-  //   else if (saved === "light") setDarkMode(false);
-  //   else {
-  //     const prefersDark = window.matchMedia(
-  //       "(prefers-color-scheme: dark)"
-  //     ).matches;
-  //     setDarkMode(prefersDark);
-  //   }
-  //   setReady(true);
-  // }, []);
-
-  // // Apply dark class
-  // useEffect(() => {
-  //   if (!ready) return;
-  //   const root = document.documentElement;
-  //   if (darkMode) {
-  //     root.classList.add("dark");
-  //     root.style.colorScheme = "dark";
-  //     localStorage.setItem("theme", "dark");
-  //   } else {
-  //     root.classList.remove("dark");
-  //     root.style.colorScheme = "light";
-  //     localStorage.setItem("theme", "light");
-  //   }
-  // }, [darkMode, ready]);
-
-  // const toggleDarkMode = () => setDarkMode((prev) => !prev);
+  useEffect(() => {
+    setLoading(true);
+  }, []);
 
   return (
     <html lang="en">

@@ -5,16 +5,23 @@ import Home from "../pages/Home";
 import MainLayouts from "../Layouts/MainLayouts";
 import AuthLayout from "../Layouts/Auth/_layout";
 import LoginPage from "../pages/Auth/login";
+import ForgotPassword from "../pages/Auth/forgot-password";
+import { LoadingProvider } from "../context/Loading";
+import DashboardPage from "../pages/Dashboard";
 
 export default function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<MainLayouts />}>
-        <Route path="/" element={<Home />} />
-      </Route>
-      <Route path="/auth" element={<AuthLayout />}>
-        <Route path="/auth/login" element={<LoginPage />} />
-      </Route>
-    </Routes>
+    <LoadingProvider>
+      <Routes>
+        <Route path="/" element={<MainLayouts />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
+        <Route path="/auth" element={<AuthLayout />}>
+          <Route path="/auth/login" element={<LoginPage />} />
+          <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+        </Route>
+      </Routes>
+    </LoadingProvider>
   );
 }

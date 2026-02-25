@@ -19,7 +19,7 @@ export default function AuthLayoutRoute() {
 }
 
 export const meta: MetaFunction = () => {
-  const title = "RetroRadio Dispatch - Auth";
+  const title = "RetroRadio Dispatch - Community Portal";
   const description = "RetroPeak Solutions!";
   const url = "https://rto.retropeak.solutions";
   const image = "https://rto.retropeak.solutions/assets/core/img/logo.png";

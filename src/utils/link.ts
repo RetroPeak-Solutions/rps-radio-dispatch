@@ -6,6 +6,14 @@ export default function link(mode: 'dev' | 'prod') {
     return "https://rto.retropeak.solutions";
 }
 
+export function ApiBaseLink() {
+    return `${link('dev')}/api`;
+}
+
+export function ApiBaseAuthLink() {
+    return `${ApiBaseLink()}/auth`;
+}
+
 export function SocketLink(mode: 'dev' | 'prod') {
     if (mode === 'dev') {
         return 'http://localhost:3000';
@@ -15,13 +23,17 @@ export function SocketLink(mode: 'dev' | 'prod') {
 }
 
 export function AuthUser() {
-    return `${link("dev")}/api/auth/me`;
+    return `${ApiBaseAuthLink()}/me`;
 }
 
 export function AuthLogout() {
-    return `${link("dev")}/api/auth/logout`
+    return `${ApiBaseAuthLink()}/logout`;
 }
 
 export function AuthLogin() {
-    return `${link("dev")}/api/auth/login`
+    return `${ApiBaseAuthLink()}/login`;
+}
+
+export function AuthForgotPassword() {
+    return `${ApiBaseAuthLink()}/forgot-password`;
 }

@@ -5,8 +5,10 @@ import { useEffect, useState } from "react";
 import { Button } from "./UI/Button";
 import { AuthUser, AuthLogout } from "../utils/link";
 import axios from "axios";
+import { useLoading } from "../context/Loading";
 
 export default function Navbar() {
+  const { setLoading } = useLoading();
   const location = useLocation();
   const currentPathname = location.pathname;
   const pathSegments = currentPathname.split("/");
@@ -15,6 +17,7 @@ export default function Navbar() {
   const [isSystemAdmin, setIsSystemAdmin] = useState(false);
 
   useEffect(() => {
+    console.log(routePrefix);
     let mounted = true;
     const loadSession = async () => {
       try {
@@ -26,7 +29,11 @@ export default function Navbar() {
         if (res.data.ok) return;
         const data = await res.data;
         if (!data.user) {
-          navigate("/auth/login");
+          if (routePrefix !== '#/auth') {
+            navigate("/auth/login");
+          } else {
+            return;
+          }
         }
         if (mounted) {
           setIsSystemAdmin(Boolean(data?.user?.systemAdmin?.isActive));
@@ -42,10 +49,13 @@ export default function Navbar() {
   }, []);
 
   const handleLogout = async () => {
+    console.log(AuthLogout());
+    setLoading(true);
     await axios.post(AuthLogout(), null, {
       withCredentials: true,
-    })
+    });
     navigate("/auth/login");
+    return;
   };
 
   return (
@@ -55,11 +65,11 @@ export default function Navbar() {
             <span className="rounded-lg bg-[#3C83F6]/20 p-2 text-[#8DB6FF]">
               <Radio className="h-4 w-4" />
             </span>
-            <span className="text-sm font-semibold">RetroRadio | Dispatch</span>
+            <span className="text-sm font-semibold">RetroRadio | Client Portal</span>
           </NavLink>
 
           <nav className="flex items-center gap-2">
-            {/* <NavLink
+            <NavLink
               to="/"
               className={({ isActive }) =>
                 `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
@@ -69,7 +79,7 @@ export default function Navbar() {
               end
             >
               <House className="h-4 w-4" /> Home
-            </NavLink> */}
+            </NavLink>
             {/* {pathSegments === "/" && (
               <>Test</>
             )} */}

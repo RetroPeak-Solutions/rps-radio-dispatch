@@ -1,13 +1,14 @@
 import React from "react";
 import { Outlet } from "react-router";
-import Navbar from "../components/Navbar";
+import GeneralPageWrapper from '../Wrappers/Page/GeneralWrapper';
+import { LoadingOverlay } from "../components/UI/LoadingOverlay";
 
 function MainLayouts() {
   return (
-    <div>
-      <Navbar />
+    <GeneralPageWrapper>
+      <LoadingOverlay />
       <Outlet />
-    </div>
+    </GeneralPageWrapper>
   );
 }
 
