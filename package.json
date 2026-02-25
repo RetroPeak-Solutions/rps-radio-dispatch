@@ -1,19 +1,33 @@
 {
-  "name": "test-project",
+  "name": "retroradio-dispatch",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
   "license": "MIT",
   "build": {
-    "appId": "com.example.yourapp",
+    "artifactName": "RetroRadio-${version}-${arch}.${ext}",
+    "appId": "solutions.retropeak.rto",
     "files": [
       "dist/**/*",
       "electron/**/*"
     ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dmg", "pkg"]
+    },
+    "win": {
+      "target": "nsis"
+    },
     "directories": {
       "buildResources": "assets"
+    },
+    "nsis": {
+      "perMachine": false,
+      "allowElevation": false,
+      "runAfterFinish": true,
+      "oneClick": false
     }
   },
   "scripts": {
