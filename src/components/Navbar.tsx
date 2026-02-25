@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
-import { Radio, LayoutDashboard, House, LogOut, UserCog } from "lucide-react";
+import { Radio, LayoutDashboard, House, LogOut, UserCog, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "./UI/Button";
 import { AuthUser, AuthLogout } from "../utils/link";
@@ -103,8 +103,11 @@ export default function Navbar() {
             >
               <UserCog className="h-4 w-4" /> Account
             </NavLink> */}
-            <Button onClick={handleLogout} className="flex items-center gap-2 rounded-lg cursor-pointer bg-[#f63c3c1a] border border-[#f63c3c1a] text-[#f63c3c]">
-              <LogOut className="h-4 w-4" /> Logout
+            <Button disabled title="Settings" onClick={() => void(0)} className="flex items-center gap-2 rounded-lg cursor-pointer bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6]">
+              <Settings className="h-4 w-4" />
+            </Button>
+            <Button title="Logout" onClick={handleLogout} className="flex items-center gap-2 rounded-lg cursor-pointer bg-[#f63c3c1a] border border-[#f63c3c1a] text-[#f63c3c]">
+              <LogOut className="h-4 w-4" />
             </Button>
           </nav>
         </div>

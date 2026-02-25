@@ -42,5 +42,3 @@ app.on("activate", () => {
 ipcMain.on('set-theme', (event, theme) => {
   nativeTheme.themeSource = theme; // 'dark', 'light', or 'system'
 });
-
-
