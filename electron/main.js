@@ -184,27 +184,66 @@ ipcMain.handle("updates.check", async () => {
 });
 
 ipcMain.handle("updates.download", async () => {
-  return new Promise((resolve, reject) => {
-    autoUpdater.once('update-available', (info) => {
-      console.log("[Updater] Update available:", info);
-    });
-    autoUpdater.once("update-downloaded", () => {
-      if (win) {
-        win.webContents.send("update-status", { status: "downloaded" });
-      }
-      resolve();
-    });
+  return new Promise(async (resolve, reject) => {
+    try {
+      const result = await autoUpdater.checkForUpdates();
 
-    autoUpdater.once("error", (err) => {
-      console.error("[Updater] Download error:", err);
-      if (win) {
-        win.webContents.send("update-status", { status: "error", error: err });
+      if (!result || !result.updateInfo) {
+        console.log("[Updater] No update info returned");
+        resolve({ status: "no-update" });
+        return;
       }
+
+      const { version } = result.updateInfo;
+
+      if (!version) {
+        console.log("[Updater] No update available");
+        resolve({ status: "no-update" });
+        return;
+      }
+
+      console.log("[Updater] Update found:", version);
+
+      // Notify renderer update exists
+      if (win) {
+        win.webContents.send("update-status", {
+          status: "available",
+          version,
+        });
+      }
+
+      autoUpdater.once("update-downloaded", () => {
+        console.log("[Updater] Update downloaded");
+
+        if (win) {
+          win.webContents.send("update-status", {
+            status: "downloaded",
+          });
+        }
+
+        resolve({ status: "downloaded" });
+      });
+
+      autoUpdater.once("error", (err) => {
+        console.error("[Updater] Download error:", err);
+
+        if (win) {
+          win.webContents.send("update-status", {
+            status: "error",
+            error: err.message,
+          });
+        }
+
+        reject(err);
+      });
+
+      // ✅ Only download if update exists
+      await autoUpdater.downloadUpdate();
+
+    } catch (err) {
+      console.error("[Updater] Check failed:", err);
       reject(err);
-    });
-    autoUpdater.checkForUpdatesAndNotify().then(() => {
-      autoUpdater.downloadUpdate().catch((err) => reject(err));
-    });
+    }
   });
 });
 
