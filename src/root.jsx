@@ -99,7 +99,7 @@ export default function Root() {
   return (
     <AppErrorBoundary>
       <ThemeProvider>
-        <SocketProvider url={SocketLink('dev') ?? socketUrl}>
+        <SocketProvider url={SocketLink('prod') ?? socketUrl}>
           <ToastProvider>
             <AppRoutes />
           </ToastProvider>

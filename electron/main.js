@@ -185,6 +185,9 @@ ipcMain.handle("updates.check", async () => {
 
 ipcMain.handle("updates.download", async () => {
   return new Promise((resolve, reject) => {
+    autoUpdater.once('update-available', (info) => {
+      console.log("[Updater] Update available:", info);
+    });
     autoUpdater.once("update-downloaded", () => {
       if (win) {
         win.webContents.send("update-status", { status: "downloaded" });
@@ -199,8 +202,9 @@ ipcMain.handle("updates.download", async () => {
       }
       reject(err);
     });
-
-    autoUpdater.downloadUpdate().catch((err) => reject(err));
+    autoUpdater.checkForUpdatesAndNotify().then(() => {
+      autoUpdater.downloadUpdate().catch((err) => reject(err));
+    });
   });
 });
 
