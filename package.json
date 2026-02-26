@@ -1,5 +1,11 @@
 {
   "name": "retroradio-dispatch",
+  "description": "A radio dispatch application for RetroRadio, built with Electron and React.",
+  "author": {
+    "email": "dgraves@retropeak.solutions",
+    "name": "Devin G (DeathSoulYT)",
+    "url": "https://retropeak.solutions"
+  },
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
@@ -9,6 +15,19 @@
   "homepage": "./dist",
   "license": "MIT",
   "build": {
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "RetroPeak-Solutions",
+        "repo": "rps-radio-dispatch"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": "."
+      }
+    ],
     "artifactName": "RetroRadio-${version}-${arch}.${ext}",
     "appId": "solutions.retropeak.rto",
     "files": [
@@ -17,10 +36,15 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dmg", "pkg"]
+      "target": [
+        "dmg",
+        "pkg"
+      ],
+      "icon": "electron/icons/app.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "electron/icons/app.ico"
     },
     "directories": {
       "buildResources": "assets"
@@ -31,6 +55,7 @@
       "runAfterFinish": true,
       "oneClick": false
     }
+    
   },
   "scripts": {
     "start": "electron .",
@@ -38,6 +63,9 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5174 && cross-env VITE_DEV_SERVER_URL=http://localhost:5174 electron .\"",
     "lint": "eslint .",
     "preview": "vite preview",
+    "publish": "vite build && electron-builder --win --mac -p always",
+    "publish:win": "vite build && electron-builder --win -p always",
+    "publish:mac": "vite build && electron-builder --mac -p always",
     "build": "npm run build:react && electron-builder"
   },
   "dependencies": {
@@ -45,13 +73,15 @@
     "axios": "^1.13.5",
     "class-variance-authority": "^0.7.1",
     "dotenv": "^17.3.1",
+    "electron-updater": "^6.8.3",
     "flowbite-react": "^0.12.17",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.575.0",
     "radix-ui": "^1.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-router": "^7.6.0",
+    "react-router": "^7.13.1",
+    "react-router-dom": "^7.13.1",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.5.0",
     "tone": "^15.1.22",

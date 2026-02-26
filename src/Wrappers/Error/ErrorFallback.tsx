@@ -1,23 +1,30 @@
-import { useRouteError, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { useState, useEffect } from "react";
 import { ERROR_CODES } from "./errCodes";
-import { AppError } from "./AppError";
+import { Copy } from "lucide-react";
+import "./scrollbar.css"
 
-export default function ErrorFallback() {
-  const error = useRouteError();
+interface ErrorFallbackProps {
+  error: unknown;
+}
+
+export default function ErrorFallback({ error }: ErrorFallbackProps) {
   const navigate = useNavigate();
   const [mounted, setMounted] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => setMounted(true), []);
 
   if (!error) return null;
 
-  const errorMessage = error instanceof Error ? error.message : String(error);
-  const codeFromError = (error as any)?.code;
+  const err = error as Error & { code?: string };
+  const errorMessage = err instanceof Error ? err.message : String(error);
+  const codeFromError = err.code;
 
   const isAppError =
-    (typeof codeFromError === "string" && ERROR_CODES[codeFromError] !== undefined) ||
+    (typeof codeFromError === "string" &&
+      ERROR_CODES[codeFromError] !== undefined) ||
     Object.values(ERROR_CODES).some((ec) => ec.description === errorMessage);
 
   const title = isAppError
@@ -29,7 +36,40 @@ export default function ErrorFallback() {
     : errorMessage;
 
   const stack =
-    error instanceof Error ? error.stack : typeof error === "object" ? JSON.stringify(error, null, 2) : "";
+    err instanceof Error
+      ? err.stack
+      : typeof error === "object"
+        ? JSON.stringify(error, null, 2)
+        : "";
+
+  const copyStackToClipboard = async () => {
+    if (!stack) return;
+    try {
+      // First, try the toast notification
+      await navigator.clipboard.writeText(stack);
+      setToast("Copied to clipboard!");
+      setTimeout(() => setToast(null), 2000);
+    } catch {
+      // If toast/copy fails, fallback to desktop notification
+      try {
+        if ("Notification" in window && Notification.permission === "granted") {
+          new Notification("Error stack copied!", {
+            body: "The error stack has been copied to your clipboard.",
+          });
+        } else if ("Notification" in window) {
+          Notification.requestPermission().then((perm) => {
+            if (perm === "granted") {
+              new Notification("Error stack copied!", {
+                body: "The error stack has been copied to your clipboard.",
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.error("Failed to show desktop notification:", e);
+      }
+    }
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white dark:bg-transparent p-6 select-none">
@@ -59,7 +99,7 @@ export default function ErrorFallback() {
 
           <button
             onClick={() => navigate("/")}
-            className="flex-1 px-4 py-2 rounded-lg border border-emerald-500 text-emerald-500 font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 transition-all shadow-sm hover:shadow-md"
+            className="flex-1 px-4 py-2 rounded-lg border border-emerald-500 text-emerald-500 font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 transition-all shadow-sm hover:shadow-md mt-2 sm:mt-0"
           >
             Go Home
           </button>
@@ -77,12 +117,34 @@ export default function ErrorFallback() {
         {/* Animated stack container */}
         {!isAppError && (
           <div
-            className={`overflow-hidden transition-[max-height,opacity,margin] duration-500 ease-in-out
+            className={`relative overflow-hidden transition-[max-height,opacity,margin] duration-500 ease-in-out
             ${showDetails ? "ml-4 mr-4 mb-4 max-h-64 opacity-100" : "ml-0 mr-0 mb-0 max-h-0 opacity-0"}`}
           >
-            <pre className="p-4 m-0 bg-black/40 text-sm text-gray-300 whitespace-pre-wrap break-words max-h-64 overflow-auto">
+            {/* Copy Stack Button */}
+            {stack && showDetails && (
+              <button
+                onClick={copyStackToClipboard}
+                className="absolute top-2 right-2 p-1 rounded hover:bg-gray-700 transition"
+                title="Copy Stack"
+              >
+                <Copy className="w-4 h-4 text-gray-200" />
+              </button>
+            )}
+
+            <pre
+              className="
+                error-stack
+              "
+            >
               {stack}
             </pre>
+          </div>
+        )}
+
+        {/* Toast Notification */}
+        {toast && (
+          <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-700 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in-out">
+            {toast}
           </div>
         )}
       </div>

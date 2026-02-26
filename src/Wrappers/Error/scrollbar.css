@@ -1,0 +1,37 @@
+.error-stack {
+  padding: 1rem; /* p-4 */
+  margin: 0; /* m-0 */
+  background-color: rgba(0, 0, 0, 0.4); /* bg-black/40 */
+  color: #d1d5db; /* text-gray-300 */
+  font-size: 0.875rem; /* text-sm */
+  white-space: pre-wrap; /* whitespace-pre-wrap */
+  word-break: break-word; /* break-words */
+  max-height: 16rem; /* max-h-64 */
+  overflow: auto; /* overflow-auto */
+}
+
+/* WebKit Browsers */
+.error-stack::-webkit-scrollbar {
+  width: 0.25rem; /* thin scrollbar */
+  height: 0.25rem;
+}
+
+.error-stack::-webkit-scrollbar-track {
+  background-color: #1f2937; /* webkit-scrollbar-track-gray-800 */
+  border-radius: 0.375rem; /* webkit-scrollbar-track-rounded-md */
+}
+
+.error-stack::-webkit-scrollbar-thumb {
+  background-color: #4b5563; /* webkit-scrollbar-thumb-gray-600 */
+  border-radius: 0.375rem; /* webkit-scrollbar-thumb-rounded-md */
+}
+
+.error-stack::-webkit-scrollbar-thumb:hover {
+  background-color: #6b7280; /* hover: webkit-scrollbar-thumb-gray-500 */
+}
+
+/* Firefox */
+.error-stack {
+  scrollbar-width: thin;
+  scrollbar-color: #4b5563 #1f2937; /* thumb and track colors */
+}

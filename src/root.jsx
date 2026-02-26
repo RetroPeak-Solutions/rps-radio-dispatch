@@ -16,6 +16,7 @@ import { SocketLink } from "./utils/link";
 import AppRoutes from "./routes/routes.jsx";
 import { useDarkMode } from "./hooks/useDarkMode.js";
 import { LoadingOverlay } from "./components/UI/LoadingOverlay";
+import { AppErrorBoundary } from "./Wrappers/Error/AppErrorBoundary";
 
 // Fonts
 export const links = () => [
@@ -63,20 +64,22 @@ export function Layout({ children }) {
         <Meta />
         <Links />
       </head>
-      <ToastProvider>
-        <ThemeProvider>
-          <ThemeContext.Provider value={{ darkMode, toggleDarkMode, ready }}>
-            <body
-              className={`min-h-screen transition-colors duration-300 overflow-x-hidden ${darkMode ? "bg-gray-950" : "bg-white"
-                }`}
-            >
-              {children}
-              <ScrollRestoration />
-              <Scripts />
-            </body>
-          </ThemeContext.Provider>
-        </ThemeProvider>
-      </ToastProvider>
+      <AppErrorBoundary>
+        <ToastProvider>
+          <ThemeProvider>
+            <ThemeContext.Provider value={{ darkMode, toggleDarkMode, ready }}>
+              <body
+                className={`min-h-screen transition-colors duration-300 overflow-x-hidden ${darkMode ? "bg-gray-950" : "bg-white"
+                  }`}
+              >
+                {children}
+                <ScrollRestoration />
+                <Scripts />
+              </body>
+            </ThemeContext.Provider>
+          </ThemeProvider>
+        </ToastProvider>
+      </AppErrorBoundary>
     </html>
   );
 }
@@ -94,13 +97,15 @@ export default function Root() {
   const socketUrl = SocketLink();
 
   return (
-    <ThemeProvider>
-      <SocketProvider url={SocketLink('dev') ?? socketUrl}>
-        <ToastProvider>
-          <AppRoutes />
-        </ToastProvider>
-      </SocketProvider>
-    </ThemeProvider>
+    <AppErrorBoundary>
+      <ThemeProvider>
+        <SocketProvider url={SocketLink('dev') ?? socketUrl}>
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
+        </SocketProvider>
+      </ThemeProvider>
+    </AppErrorBoundary>
   );
 }
 
