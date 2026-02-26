@@ -7,7 +7,7 @@ export default function link(mode: 'dev' | 'prod') {
 }
 
 export function ApiBaseLink() {
-    return `${link('dev')}/api`;
+    return `${link('prod')}/api`;
 }
 
 export function ApiBaseAuthLink() {
