@@ -24,10 +24,24 @@ const defaultSettings = {
   autoUpdates: false,
   updateChannel: "stable",
   notifications: true,
+  placements: {
+    channels: [],
+    tones: [],
+    alerts: []
+  },
+  keybinds: {
+    ptt: {
+      global: {
+        key: [""],
+      },
+      communities: [],
+    }
+  }
 };
 
 // Ensure settings.json exists on app ready (safer)
 app.whenReady().then(() => {
+  console.log("App Name:", app.getName());
   if (!fs.existsSync(settingsPath)) {
     fs.writeFileSync(settingsPath, JSON.stringify(defaultSettings, null, 2), "utf-8");
     console.log("[Settings] Created default settings.json at", settingsPath);
@@ -42,6 +56,9 @@ const createWindow = () => {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
+    // autoHideMenuBar: false,
+    // titleBarStyle: "hidden",
+    // ...(process.platform !== 'darwin' ? { titleBarOverlay: true } : { titleBarOverlay: true }),
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -152,10 +169,10 @@ ipcMain.handle("updates.getReleaseNotes", async () => {
       "https://api.github.com/repos/RetroPeak-Solutions/rps-radio-dispatch/releases/latest",
       { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}` } }
     );
-    return res?.data?.body || "No release notes available.";
+    return res?.data?.body || "- No release notes available.";
   } catch (err) {
     console.error("[Updater] Failed to get release notes:", err);
-    return "Failed to load release notes.";
+    return "- Failed to load release notes. \n- Try Again Later";
   }
 });
 

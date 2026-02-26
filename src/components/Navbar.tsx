@@ -81,7 +81,7 @@ export default function Navbar() {
           </NavLink>
 
           <nav className="flex items-center gap-2">
-            <NavLink
+            {/* <NavLink
               to="/"
               className={({ isActive }) =>
                 `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
@@ -92,12 +92,12 @@ export default function Navbar() {
               }
               end
             >
-              <House className="h-4 w-4" /> Home
-            </NavLink>
+              <LayoutDashboard className="h-4 w-4" /> Dashboard
+            </NavLink> */}
             {/* {pathSegments === "/" && (
               <>Test</>
             )} */}
-            <NavLink
+            {/* <NavLink
               to="/dashboard"
               className={({ isActive }) =>
                 `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
@@ -108,7 +108,7 @@ export default function Navbar() {
               }
             >
               <LayoutDashboard className="h-4 w-4" /> Dashboard
-            </NavLink>
+            </NavLink> */}
             {/* <NavLink
               to="/account"
               className={({ isActive }) =>

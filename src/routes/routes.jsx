@@ -8,17 +8,20 @@ import ForgotPassword from "../pages/Auth/forgot-password";
 import { LoadingProvider } from "../context/Loading";
 import DashboardPage from "../pages/Dashboard";
 import SettingsPage from "../pages/Settings";
-import ErrorFallback from "../Wrappers/Error/ErrorFallback";
 import { AppErrorBoundary } from "../Wrappers/Error/AppErrorBoundary";
+import CommunityConsole from "../pages/community/console";
 
 export default function AppRoutes() {
   return (
     <LoadingProvider>
       <Routes>
         <Route path="/" element={<MainLayouts />} errorElement={<AppErrorBoundary />}>
-          <Route index element={<Home />} />
-          <Route path="dashboard" element={<DashboardPage />} />
+          {/* <Route index element={<Home />} /> */}
+          <Route index element={<DashboardPage />} />
           <Route path="settings" element={<SettingsPage />} />
+        </Route>
+        <Route path=":id" element={<AuthLayout />} errorElement={<AppErrorBoundary />}>
+          <Route path="console" element={<CommunityConsole />} />
         </Route>
         <Route path="auth" element={<AuthLayout />} errorElement={<AppErrorBoundary />}>
           <Route path="login" element={<LoginPage />} />

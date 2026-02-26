@@ -98,7 +98,10 @@ export default function ErrorFallback({ error }: ErrorFallbackProps) {
           </div>
 
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              navigate("/");
+              window.location.reload();
+            }}
             className="flex-1 px-4 py-2 rounded-lg border border-emerald-500 text-emerald-500 font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 transition-all shadow-sm hover:shadow-md mt-2 sm:mt-0"
           >
             Go Home

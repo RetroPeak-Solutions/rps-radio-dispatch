@@ -1,4 +1,4 @@
-export {};
+export { };
 
 declare global {
   interface Window {
@@ -11,12 +11,124 @@ declare global {
           theme?: "system" | "light" | "dark";
           autoUpdates?: boolean;
           updateChannel?: "stable" | "beta";
+          notifications?: boolean;
+          placements: {
+            channels: {
+              id: string;
+              pos: {
+                x: string;
+                y: string;
+              }
+            }[],
+            tones: {
+              id: string;
+              pos: {
+                x: string;
+                y: string;
+              }
+            }[],
+            alerts: {
+              id: string;
+              pos: {
+                x: string;
+                y: string;
+              }
+            }[]
+          };
+          keybinds: {
+            ptt: {
+              global: {
+                key: string[];
+              };
+              communities: {
+                id: string;
+                channels: {
+                  ch1: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch2: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch3: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch4: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch5: {
+                    id: string;
+                    key: string[];
+                  };
+                }
+              }[]
+            }
+          };
           [key: string]: any;
         }>;
         set: (settings: {
           theme?: "system" | "light" | "dark";
           autoUpdates?: boolean;
           updateChannel?: "stable" | "beta";
+          notifications?: boolean;
+          placements: {
+            channels: {
+              id: string;
+              pos: {
+                x: string;
+                y: string;
+              }
+            }[],
+            tones: {
+              id: string;
+              pos: {
+                x: string;
+                y: string;
+              }
+            }[],
+            alerts: {
+              id: string;
+              pos: {
+                x: string;
+                y: string;
+              }
+            }[]
+          };
+          keybinds: {
+            ptt: {
+              global: {
+                key: string[];
+              };
+              communities: {
+                id: string;
+                channels: {
+                  ch1: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch2: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch3: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch4: {
+                    id: string;
+                    key: string[];
+                  };
+                  ch5: {
+                    id: string;
+                    key: string[];
+                  };
+                }
+              }[]
+            }
+          };
           [key: string]: any;
         }) => Promise<boolean>;
       };
