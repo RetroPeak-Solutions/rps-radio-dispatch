@@ -54,10 +54,12 @@ function DraggableItem({
     id,
     children,
     pos,
+    drag,
 }: {
     id: string;
     children: React.ReactNode;
     pos: { x: number; y: number };
+    drag: boolean;
 }) {
     const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
 
@@ -70,7 +72,7 @@ function DraggableItem({
                 position: "absolute",
                 left: pos.x,
                 top: pos.y,
-                cursor: isDragging ? "grabbing" : "grab",
+                cursor: drag ? isDragging ? "grabbing" : "grab" : "auto",
                 userSelect: "none",
                 zIndex: isDragging ? 999 : "auto",
             }}
@@ -195,8 +197,11 @@ export default function CommunityConsole() {
         const start = dragStartPos.current[id];
         if (!start) return;
 
-        let newX = start.x + event.delta.x;
-        let newY = start.y + event.delta.y;
+        const eventX = event.delta.x;
+        const eventY = event.delta.y;
+
+        let newX = start.x + eventX;
+        let newY = start.y + eventY;
 
         const clamped = clampToCanvas(newX, newY);
         const resolved = resolveCollision(id, clamped.x, clamped.y, positions);
@@ -243,12 +248,10 @@ export default function CommunityConsole() {
         delete dragStartPos.current[id];
     };
 
-    // if (!community || !settings) return <div>Loading...</div>;
-
     return (
         <div className="min-h-screen bg-[#0B1220] text-white font-mono flex flex-col">
-            <div className="flex justify-between p-2 bg-[#1A1F2E] border-b border-gray-700">
-                <h1>{community?.name} | DISPATCH CONSOLE</h1>
+            <div className="flex justify-between p-2 bg-[#0C1524] border-b border-gray-700 select-none">
+                <h1 className="pt-1">{community?.name} | Dispatch Console</h1>
                 <div className="flex gap-2">
                     <button
                         className={`px-3 py-1 rounded ${editMode ? "bg-green-600" : "bg-gray-700"}`}
@@ -266,7 +269,7 @@ export default function CommunityConsole() {
             </div>
 
             <Tab.Group selectedIndex={activeZoneIndex} onChange={setActiveZoneIndex}>
-                <Tab.List className="flex bg-[#1A1F2E] border-b border-gray-700">
+                <Tab.List className="flex bg-[#0C1524]  border-b border-gray-700 select-none">
                     {community?.radioZones.map((zone) => (
                         <Tab
                             key={zone.id}
@@ -283,7 +286,7 @@ export default function CommunityConsole() {
 
                 <Tab.Panels className="flex-1">
                     {community?.radioZones.map((zone) => (
-                        <Tab.Panel key={zone.id} className="h-[calc(100vh-120px)] overflow-y-auto">
+                        <Tab.Panel key={zone.id} className="h-full overflow-y-auto ">
                             <div
                                 ref={canvasRef}
                                 className="relative w-full"
@@ -298,8 +301,8 @@ export default function CommunityConsole() {
                                     {zone.channels.map((ch) => {
                                         const pos = positions[ch.id] || { x: 20, y: 20 };
                                         return (
-                                            <DraggableItem key={ch.id} id={ch.id} pos={pos}>
-                                                <DragCard className="w-[300px] h-[150px] bg-gradient-to-b from-[#1F2434] to-[#151A26] border border-[#2A3145]">
+                                            <DraggableItem drag={editMode} key={ch.id} id={ch.id} pos={pos}>
+                                                <DragCard className="w-[300px] h-[150px] bg-linear-to-b from-[#1F2434] to-[#151A26] border border-[#2A3145]">
                                                     {ch.channel.name}
                                                 </DragCard>
                                             </DraggableItem>
@@ -309,8 +312,8 @@ export default function CommunityConsole() {
                                     {zone.toneSets?.map((t) => {
                                         const pos = positions[t.id] || { x: 50, y: 50 };
                                         return (
-                                            <DraggableItem key={t.id} id={t.id} pos={pos}>
-                                                <DragCard className="w-[300px] h-[150px] bg-gradient-to-b from-[#1F2434] to-[#151A26] border border-[#2A3145]">
+                                            <DraggableItem drag={editMode} key={t.id} id={t.id} pos={pos}>
+                                                <DragCard className="w-75 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border border-[#2A3145]">
                                                     <h1>{t.toneSet.name}</h1>
                                                     <small className="text-[#9CA3AF]">A: {t.toneSet.toneAFrequencyHz} HZ | B: {t.toneSet.toneBFrequencyHz} HZ</small>
                                                     <div className="flex flex-row gap-3 py-2 justify-end">
