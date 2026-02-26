@@ -34,12 +34,14 @@
       "dist/**/*",
       "electron/**/*"
     ],
+    
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
         "pkg"
       ],
+      "hardenedRuntime": true,
       "icon": "electron/icons/app.icns"
     },
     "win": {
