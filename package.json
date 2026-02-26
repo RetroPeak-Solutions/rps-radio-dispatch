@@ -34,7 +34,6 @@
       "dist/**/*",
       "electron/**/*"
     ],
-    
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
