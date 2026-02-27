@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require("electron");
  */
 const listeners = {
   updateStatus: new Set(),
+  pttHotkeyEvent: new Set(),
 };
 
 contextBridge.exposeInMainWorld("api", {
@@ -59,6 +60,25 @@ contextBridge.exposeInMainWorld("api", {
   // =====================================
   theme: {
     set: (theme) => ipcRenderer.send("set-theme", theme),
+  },
+
+  pttHotkeys: {
+    configure: (communityId) => ipcRenderer.invoke("ptt.hotkeys.configure", { communityId }),
+    onEvent: (callback) => {
+      const listener = (_, data) => callback(data);
+      listeners.pttHotkeyEvent.add(listener);
+      ipcRenderer.on("ptt-hotkey-event", listener);
+      return () => {
+        ipcRenderer.removeListener("ptt-hotkey-event", listener);
+        listeners.pttHotkeyEvent.delete(listener);
+      };
+    },
+    removeListeners: () => {
+      listeners.pttHotkeyEvent.forEach((listener) => {
+        ipcRenderer.removeListener("ptt-hotkey-event", listener);
+      });
+      listeners.pttHotkeyEvent.clear();
+    },
   },
 });
 

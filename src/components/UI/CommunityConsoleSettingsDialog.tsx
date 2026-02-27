@@ -34,7 +34,7 @@ type SlotKey = keyof CommunityPttChannels;
 const SLOT_ORDER: SlotKey[] = ["ch1", "ch2", "ch3", "ch4", "ch5"];
 
 function formatKey(e: KeyboardEvent): string | null {
-  const { key, location } = e;
+  const { key, code, location } = e;
   if (key === "Escape") return null;
   const isLeft = location === 1;
   const isRight = location === 2;
@@ -56,6 +56,9 @@ function formatKey(e: KeyboardEvent): string | null {
       break;
   }
 
+  if (code.startsWith("Digit")) return code.slice(5);
+  if (code.startsWith("Numpad") && /^[0-9]$/.test(code.slice(6))) return code.slice(6);
+  if (code.startsWith("Key") && code.length === 4) return code.slice(3).toUpperCase();
   if (key.length === 1) return key.toUpperCase();
   return key;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Tab } from "@headlessui/react";
 import {
@@ -26,6 +26,7 @@ import CommunityConsoleSettingsDialog, {
   type CommunityPttChannels,
   type ConsoleSettingsState,
 } from "@components/UI/CommunityConsoleSettingsDialog";
+import { useCommunityPttHotkeys } from "@pages/community/pttHotkeys";
 import { Settings } from "lucide-react";
 import InstantPTT from "@assets/imgs/instantptt.png";
 import PageSelect from "@assets/imgs/pageselect.png";
@@ -65,6 +66,7 @@ const DEFAULT_CONSOLE_SETTINGS: ConsoleSettingsState = {
   inputDeviceId: "",
   outputDeviceId: "",
 };
+const SHOW_PTT_DEBUG = false;
 
 const EMPTY_SLOT = { id: "", key: [] as string[] };
 const DEFAULT_COMMUNITY_PTT_CHANNELS: CommunityPttChannels = {
@@ -115,92 +117,30 @@ function getCommunityPttBindings(settings: AppSettings | null, communityId?: str
   return { id, channels: withDefaults };
 }
 
-function formatKeyboardKey(e: KeyboardEvent): string | null {
-  const { key, location } = e;
-  const isLeft = location === 1;
-  const isRight = location === 2;
-  const side = isLeft ? "L" : isRight ? "R" : "";
-  const isMac = navigator.platform.toUpperCase().includes("MAC");
-
-  switch (key) {
-    case "Control":
-      return `${side}Ctrl`;
-    case "Shift":
-      return `${side}Shift`;
-    case "Alt":
-      return isMac ? `${side}Option` : `${side}Alt`;
-    case "Meta":
-      return isMac ? `${side}Cmd` : `${side}Win`;
-    case " ":
-      return "Space";
-    default:
-      break;
-  }
-
-  if (key.length === 1) return key.toUpperCase();
-  return key;
-}
-
-function sortCombo(keys: string[]) {
-  const order = ["Ctrl", "Shift", "Alt", "Option", "Cmd", "Win"];
-  return [...new Set(keys)].sort((a, b) => {
-    const aBase = a.replace(/^L|^R/, "");
-    const bBase = b.replace(/^L|^R/, "");
-    const aIndex = order.indexOf(aBase);
-    const bIndex = order.indexOf(bBase);
-    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
-    if (aIndex === -1) return 1;
-    if (bIndex === -1) return -1;
-    return aIndex - bIndex;
-  });
-}
-
-function comboMatches(activeKeys: Set<string>, combo: string[]) {
-  if (combo.length === 0) return false;
-  const active = sortCombo(Array.from(activeKeys));
-  const expected = sortCombo(combo);
-  if (active.length !== expected.length) return false;
-  return expected.every((k, i) => k === active[i]);
-}
-
 function volumeToDb(volume: number) {
   if (volume <= 0) return -60;
   return 20 * Math.log10(volume / 100);
 }
 
-function playPttIndicatorTone(kind: "start" | "end" | "denied") {
-  const AudioCtx =
-    (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (!AudioCtx) return;
-  const ctx: AudioContext = new AudioCtx();
-  const gain = ctx.createGain();
-  gain.connect(ctx.destination);
-  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
+const AUDIO_SFX = {
+  talkActive: "/assets/audio/talk_active.mp3",
+  talkDenied: "/assets/audio/talk_denied.mp3",
+  hold: "/assets/audio/hold.wav",
+  emergency: "/assets/audio/emergency.wav",
+  alert1: "/assets/audio/alert1.wav",
+  alert2: "/assets/audio/alert2.wav",
+  alert3: "/assets/audio/alert3.wav",
+} as const;
 
-  const osc = ctx.createOscillator();
-  osc.type = kind === "denied" ? "square" : "sine";
-  osc.connect(gain);
-  osc.start();
-
-  if (kind === "start") {
-    osc.frequency.setValueAtTime(900, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
-  } else if (kind === "end") {
-    osc.frequency.setValueAtTime(900, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
-  } else {
-    osc.frequency.setValueAtTime(240, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.12);
-  }
-
-  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
-  osc.stop(ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
-  setTimeout(() => {
-    try {
-      ctx.close();
-    } catch {}
-  }, 220);
+function resolveToneSfx(tone?: Partial<TonePacket>) {
+  const raw = `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase();
+  if (!raw) return null;
+  if (raw.includes("emergency") || raw.includes("panic")) return AUDIO_SFX.emergency;
+  if (raw.includes("hold")) return AUDIO_SFX.hold;
+  if (raw.includes("alert1") || raw.includes("alert 1") || raw.includes("alert_1")) return AUDIO_SFX.alert1;
+  if (raw.includes("alert2") || raw.includes("alert 2") || raw.includes("alert_2")) return AUDIO_SFX.alert2;
+  if (raw.includes("alert3") || raw.includes("alert 3") || raw.includes("alert_3")) return AUDIO_SFX.alert3;
+  return null;
 }
 
 function DraggableItem({
@@ -268,15 +208,204 @@ export default function CommunityConsole() {
   const [zuluTime, setZuluTime] = useState("");
   const [localPttActive, setLocalPttActive] = useState(false);
   const [activePttIndicator, setActivePttIndicator] = useState<string | null>(null);
+  const [pttDebug, setPttDebug] = useState("");
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement | null>(null);
-  const pressedKeysRef = useRef<Set<string>>(new Set());
   const micStreamRef = useRef<MediaStream | null>(null);
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
   const activePttChannelsRef = useRef<string[]>([]);
-  const activeHotkeyComboRef = useRef<string[] | null>(null);
-  const warningCooldownRef = useRef<Record<string, number>>({});
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const activeVoiceChannelsRef = useRef<string[]>([]);
+  const voiceSequenceRef = useRef(0);
+  const incomingVoiceQueueRef = useRef<Array<{ src: string; volume: number }>>([]);
+  const incomingVoicePlayingRef = useRef(false);
+  const hotCuePendingRef = useRef(false);
+
+  const playSfx = async (src: string, volume = 0.8) => {
+    const audio = new Audio(src);
+    audio.volume = volume;
+    const sinkId = consoleSettings.outputDeviceId;
+    if (sinkId && typeof (audio as any).setSinkId === "function") {
+      try {
+        await (audio as any).setSinkId(sinkId);
+      } catch {
+        // ignore
+      }
+    }
+
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      audio.addEventListener("ended", finish, { once: true });
+      audio.addEventListener("error", finish, { once: true });
+      audio.play().catch(finish);
+      setTimeout(finish, 6000);
+    });
+  };
+
+  const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
+    if (kind === "start") {
+      void playSfx(AUDIO_SFX.talkActive, 0.85);
+      return;
+    }
+    if (kind === "denied") {
+      void playSfx(AUDIO_SFX.talkDenied, 0.9);
+      return;
+    }
+
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx: AudioContext = new AudioCtx();
+    const gain = ctx.createGain();
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
+
+    const osc = ctx.createOscillator();
+    osc.type = kind === "denied" ? "square" : "sine";
+    osc.connect(gain);
+    osc.start();
+
+    if (kind === "start") {
+      osc.frequency.setValueAtTime(900, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
+    } else if (kind === "end") {
+      osc.frequency.setValueAtTime(900, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
+    } else {
+      osc.frequency.setValueAtTime(240, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.12);
+    }
+
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
+    osc.stop(ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
+    setTimeout(() => {
+      try {
+        ctx.close();
+      } catch {}
+    }, 220);
+  };
+
+  const blobToBase64 = async (blob: Blob): Promise<string> => {
+    const arr = new Uint8Array(await blob.arrayBuffer());
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < arr.length; i += chunk) {
+      binary += String.fromCharCode(...arr.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  };
+
+  const decodeBase64ToBlob = (base64: string, mimeType: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Blob([bytes], { type: mimeType });
+  };
+
+  const drainIncomingVoiceQueue = () => {
+    if (incomingVoicePlayingRef.current) return;
+    const next = incomingVoiceQueueRef.current.shift();
+    if (!next) return;
+    incomingVoicePlayingRef.current = true;
+    const audio = new Audio(next.src);
+    audio.volume = next.volume;
+    const sinkId = consoleSettings.outputDeviceId;
+    const play = async () => {
+      if (sinkId && typeof (audio as any).setSinkId === "function") {
+        try {
+          await (audio as any).setSinkId(sinkId);
+        } catch {
+          // ignore
+        }
+      }
+      await audio.play();
+    };
+    const finish = () => {
+      incomingVoicePlayingRef.current = false;
+      URL.revokeObjectURL(next.src);
+      drainIncomingVoiceQueue();
+    };
+    audio.addEventListener("ended", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    play().catch(finish);
+  };
+
+  const enqueueIncomingVoiceChunk = (
+    chunkBase64: string,
+    mimeType: string,
+    channelIds: string[],
+  ) => {
+    const listened = channelIds.filter((id) => channelListening[id]);
+    if (listened.length === 0) return;
+    const perChannelVolumes = listened.map((id) => volumes[id] ?? 50);
+    const volume = Math.max(...perChannelVolumes, 50) / 100;
+    const blob = decodeBase64ToBlob(chunkBase64, mimeType || "audio/webm;codecs=opus");
+    const src = URL.createObjectURL(blob);
+    incomingVoiceQueueRef.current.push({ src, volume });
+    drainIncomingVoiceQueue();
+  };
+
+  const stopVoiceCapture = () => {
+    if (voiceRecorderRef.current && voiceRecorderRef.current.state !== "inactive") {
+      try {
+        voiceRecorderRef.current.stop();
+      } catch {
+        // ignore
+      }
+    }
+    voiceRecorderRef.current = null;
+    activeVoiceChannelsRef.current = [];
+  };
+
+  const startVoiceCapture = async (channelIds: string[]) => {
+    if (!socket || !communityId || channelIds.length === 0) return;
+    activeVoiceChannelsRef.current = channelIds;
+    if (voiceRecorderRef.current && voiceRecorderRef.current.state !== "inactive") return;
+    const stream = await ensureMicStream();
+    if (!stream || typeof MediaRecorder === "undefined") return;
+
+    const mimeCandidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/ogg",
+    ];
+    const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    voiceRecorderRef.current = recorder;
+    voiceSequenceRef.current = 0;
+
+    recorder.ondataavailable = async (event) => {
+      if (!event.data || event.data.size === 0) return;
+      if (!socket || activeVoiceChannelsRef.current.length === 0) return;
+      const chunkBase64 = await blobToBase64(event.data);
+      socket.emit("dispatch:voice", {
+        communityId,
+        channelIds: activeVoiceChannelsRef.current,
+        source: "You",
+        mimeType: event.data.type || mimeType || "audio/webm;codecs=opus",
+        chunkBase64,
+        sequence: voiceSequenceRef.current++,
+        timestamp: Date.now(),
+      });
+    };
+
+    try {
+      recorder.start(120);
+    } catch (err) {
+      console.error("[PTT] Failed to start voice capture", err);
+      voiceRecorderRef.current = null;
+    }
+  };
 
   const sensors = useSensors(useSensor(PointerSensor));
   const sortedZones = useMemo(
@@ -321,6 +450,17 @@ export default function CommunityConsole() {
     });
     return map;
   }, [sortedZones, activeZone]);
+  const zoneChannelIdsByRadioChannelId = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    sortedZones.forEach((zone) => {
+      zone.channels.forEach((entry) => {
+        if (!entry.channelId) return;
+        if (!map[entry.channelId]) map[entry.channelId] = [];
+        map[entry.channelId].push(entry.id);
+      });
+    });
+    return map;
+  }, [sortedZones]);
   const allZoneChannelIds = useMemo(() => {
     const set = new Set<string>();
     sortedZones.forEach((zone) => {
@@ -328,35 +468,74 @@ export default function CommunityConsole() {
     });
     return set;
   }, [sortedZones]);
-  const activeCommunityPtt = useMemo(
-    () => getCommunityPttBindings(settings, communityId),
-    [settings, communityId],
-  );
+  const radioChannelIdByZoneChannelId = useMemo(() => {
+    const map: Record<string, string> = {};
+    sortedZones.forEach((zone) => {
+      zone.channels.forEach((entry) => {
+        if (entry.channelId) map[entry.id] = entry.channelId;
+      });
+    });
+    return map;
+  }, [sortedZones]);
+  const activeCommunityPtt = useMemo(() => {
+    if (communityPttBindings?.id && communityPttBindings.id === (communityId ?? "")) {
+      return communityPttBindings;
+    }
+    return getCommunityPttBindings(settings, communityId);
+  }, [communityPttBindings, settings, communityId]);
   const quickPttCombos = useMemo(
-    () =>
+    () => {
+      const resolveSlotChannelId = (slotId: string) => {
+        if (allZoneChannelIds.has(slotId)) return slotId;
+        const candidates = zoneChannelIdsByRadioChannelId[slotId] ?? [];
+        const listenedCandidate = candidates.find((id) => channelListening[id]);
+        if (listenedCandidate) return listenedCandidate;
+        return candidates[0] ?? slotId;
+      };
+      return (
       (Object.entries(activeCommunityPtt.channels) as Array<
         [keyof CommunityPttChannels, CommunityPttChannels[keyof CommunityPttChannels]]
       >)
         .filter(([, slot]) => slot.id && Array.isArray(slot.key) && slot.key.length > 0)
         .map(([slotKey, slot]) => ({
           slotKey,
-          channelId: allZoneChannelIds.has(slot.id)
-            ? slot.id
-            : zoneChannelIdByRadioChannelId[slot.id] ?? slot.id,
+          channelId: resolveSlotChannelId(slot.id),
           channelName:
             channelNameById[
-              allZoneChannelIds.has(slot.id)
-                ? slot.id
-                : zoneChannelIdByRadioChannelId[slot.id] ?? slot.id
+              resolveSlotChannelId(slot.id)
             ] ?? channelNameById[slot.id] ?? slot.id,
-          combo: slot.key,
-        })),
-    [activeCommunityPtt, channelNameById, allZoneChannelIds, zoneChannelIdByRadioChannelId],
+          combo: slot.key.filter(Boolean),
+        }))
+      );
+    },
+    [activeCommunityPtt, channelNameById, allZoneChannelIds, zoneChannelIdsByRadioChannelId, channelListening],
   );
   const globalPttCombo = useMemo(
     () => settings?.keybinds?.ptt?.global?.key?.filter(Boolean) ?? [],
     [settings],
   );
+  const tonePlaybackBusy = useMemo(
+    () =>
+      Object.values(channelToneTransmitting).some(Boolean) ||
+      Object.values(channelToneReceiving).some(Boolean),
+    [channelToneTransmitting, channelToneReceiving],
+  );
+
+  const normalizeToZoneChannelId = (channelId: string) => {
+    if (allZoneChannelIds.has(channelId)) return channelId;
+    const candidates = zoneChannelIdsByRadioChannelId[channelId] ?? [];
+    const listenedCandidate = candidates.find((id) => channelListening[id]);
+    if (listenedCandidate) return listenedCandidate;
+    return candidates[0] ?? zoneChannelIdByRadioChannelId[channelId] ?? channelId;
+  };
+
+  const isListeningChannelId = (channelId: string) => {
+    const zoneId = normalizeToZoneChannelId(channelId);
+    if (channelListening[zoneId]) return true;
+    const radioId = radioChannelIdByZoneChannelId[zoneId];
+    if (radioId && channelListening[radioId]) return true;
+    return false;
+  };
 
   const toggleListening = (channelId: string) => {
     if (editMode || !communityId) return;
@@ -426,6 +605,7 @@ export default function CommunityConsole() {
   };
 
   const stopMicStream = () => {
+    stopVoiceCapture();
     micStreamRef.current?.getTracks().forEach((track) => track.stop());
     micStreamRef.current = null;
   };
@@ -452,30 +632,36 @@ export default function CommunityConsole() {
     });
   };
 
-  const transmitPtt = async (
+  const transmitPtt = useCallback(async (
     active: boolean,
     channelIds = listenedChannelIds,
     indicatorLabel?: string,
+    playHotCue = false,
   ) => {
     if (!communityId || channelIds.length === 0) return;
+    const normalizedChannelIds = Array.from(new Set(channelIds.map((id) => normalizeToZoneChannelId(id))));
     if (active) {
       await ensureMicStream();
+      if (playHotCue) {
+        playPttIndicatorTone("start");
+        hotCuePendingRef.current = true;
+      }
     } else {
       stopMicStream();
+      hotCuePendingRef.current = false;
     }
 
     setLocalPttActive(active);
-    activePttChannelsRef.current = active ? channelIds : [];
+    activePttChannelsRef.current = active ? normalizedChannelIds : [];
     if (!active) {
       setActivePttIndicator(null);
-      activeHotkeyComboRef.current = null;
     } else {
-      setActivePttIndicator(indicatorLabel ?? (channelIds.length === 1 ? channelIds[0] : "ACTIVE"));
+      setActivePttIndicator(indicatorLabel ?? (normalizedChannelIds.length === 1 ? normalizedChannelIds[0] : "ACTIVE"));
     }
-    setChannelsState(channelIds, "tx", active);
+    setChannelsState(normalizedChannelIds, "tx", active);
     setChannelLastSrc((prev) => {
       const next = { ...prev };
-      channelIds.forEach((id) => {
+      normalizedChannelIds.forEach((id) => {
         next[id] = active ? "You" : next[id] ?? "You";
       });
       return next;
@@ -483,12 +669,12 @@ export default function CommunityConsole() {
 
     socket?.emit("dispatch:ptt", {
       communityId,
-      channelIds,
+      channelIds: normalizedChannelIds,
       active,
       source: "You",
       timestamp: Date.now(),
     });
-  };
+  }, [communityId, listenedChannelIds, normalizeToZoneChannelId, socket]);
 
   const playTones = async (
     tones: TonePacket[],
@@ -502,16 +688,21 @@ export default function CommunityConsole() {
 
     for (let i = 0; i < tones.length; i += 1) {
       const tone = tones[i];
-      await new Promise<void>((resolve) => {
-        playQuickCall2(
-          tone.toneAHz,
-          tone.toneBHz,
-          tone.durationA,
-          tone.durationB,
-          () => resolve(),
-          volumeDb,
-        );
-      });
+      const mappedSfx = resolveToneSfx(tone);
+      if (mappedSfx) {
+        await playSfx(mappedSfx, volume / 100);
+      } else {
+        await new Promise<void>((resolve) => {
+          playQuickCall2(
+            tone.toneAHz,
+            tone.toneBHz,
+            tone.durationA,
+            tone.durationB,
+            () => resolve(),
+            volumeDb,
+          );
+        });
+      }
       onToneFinished?.(tone);
       if (i < tones.length - 1) {
         await new Promise<void>((resolve) => setTimeout(resolve, 500));
@@ -605,11 +796,12 @@ export default function CommunityConsole() {
     }) => {
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
+      const normalizedIds = Array.from(new Set(ids.map((id) => normalizeToZoneChannelId(id))));
 
-      setChannelsState(ids, "rx", event.active);
+      setChannelsState(normalizedIds, "rx", event.active);
       setChannelLastSrc((prev) => {
         const next = { ...prev };
-        ids.forEach((id) => {
+        normalizedIds.forEach((id) => {
           next[id] = event.source || "Unknown";
         });
         return next;
@@ -623,16 +815,17 @@ export default function CommunityConsole() {
     }) => {
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
+      const normalizedIds = Array.from(new Set(ids.map((id) => normalizeToZoneChannelId(id))));
 
       setChannelLastSrc((prev) => {
         const next = { ...prev };
-        ids.forEach((id) => {
+        normalizedIds.forEach((id) => {
           next[id] = event.source || "Unknown";
         });
         return next;
       });
 
-      const localChannels = ids.filter((id) => channelListening[id]);
+      const localChannels = normalizedIds.filter((id) => isListeningChannelId(id));
       if (localChannels.length > 0) {
         setToneChannelsState(localChannels, "rx", true);
         await playTones(event.tones ?? [], localChannels);
@@ -653,22 +846,28 @@ export default function CommunityConsole() {
     }) => {
       const ids = event.channelIds ?? [];
       if (event.status === "granted") {
-        playPttIndicatorTone("start");
+        if (hotCuePendingRef.current) {
+          hotCuePendingRef.current = false;
+        } else {
+          playPttIndicatorTone("start");
+        }
+        void startVoiceCapture(ids.length > 0 ? ids : activePttChannelsRef.current);
         return;
       }
       if (event.status === "ended") {
         playPttIndicatorTone("end");
-        if (ids.length > 0) setChannelsState(ids, "tx", false);
+        if (ids.length > 0) setChannelsState(ids.map((id) => normalizeToZoneChannelId(id)), "tx", false);
+        stopVoiceCapture();
         return;
       }
       if (event.status === "denied") {
         playPttIndicatorTone("denied");
         setLocalPttActive(false);
         setActivePttIndicator(null);
-        activeHotkeyComboRef.current = null;
         stopMicStream();
+        stopVoiceCapture();
         const denyIds = ids.length > 0 ? ids : activePttChannelsRef.current;
-        if (denyIds.length > 0) setChannelsState(denyIds, "tx", false);
+        if (denyIds.length > 0) setChannelsState(denyIds.map((id) => normalizeToZoneChannelId(id)), "tx", false);
         activePttChannelsRef.current = [];
         const busySummary =
           event.busyBy && event.busyBy.length > 0
@@ -680,19 +879,48 @@ export default function CommunityConsole() {
       }
     };
 
+    const onVoice = (event: {
+      channelIds?: string[];
+      chunkBase64?: string;
+      mimeType?: string;
+      socketId?: string;
+    }) => {
+      if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
+      if (event.socketId && event.socketId === socket.id) return;
+      const normalizedIds = Array.from(new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))));
+      enqueueIncomingVoiceChunk(
+        event.chunkBase64,
+        event.mimeType || "audio/webm;codecs=opus",
+        normalizedIds,
+      );
+    };
+
     socket.on("dispatch:ptt", onPtt);
     socket.on("dispatch:tone", onTone);
     socket.on("dispatch:last-src", onLastSrc);
     socket.on("dispatch:ptt-status", onPttStatus);
+    socket.on("dispatch:voice", onVoice);
 
     return () => {
+      stopVoiceCapture();
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:tone", onTone);
       socket.off("dispatch:last-src", onLastSrc);
       socket.off("dispatch:ptt-status", onPttStatus);
+      socket.off("dispatch:voice", onVoice);
       socket.emit("dispatch:leave", { communityId });
     };
-  }, [socket, communityId, channelListening]);
+  }, [
+    socket,
+    communityId,
+    channelListening,
+    volumes,
+    allZoneChannelIds,
+    zoneChannelIdByRadioChannelId,
+    radioChannelIdByZoneChannelId,
+    consoleSettings.inputDeviceId,
+    consoleSettings.outputDeviceId,
+  ]);
 
   useEffect(() => {
     const audioEl = rxMonitorAudioRef.current as any;
@@ -703,86 +931,19 @@ export default function CommunityConsole() {
     });
   }, [consoleSettings.outputDeviceId]);
 
-  // ---------------- PTT HOTKEY ----------------
-  useEffect(() => {
-    if ((quickPttCombos.length === 0 && globalPttCombo.length === 0) || editMode) return;
-    const warnOnce = (key: string, message: string) => {
-      const now = Date.now();
-      const last = warningCooldownRef.current[key] ?? 0;
-      if (now - last < 1200) return;
-      warningCooldownRef.current[key] = now;
-      toast(message, { type: "warning" });
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.repeat) return;
-      const key = formatKeyboardKey(e);
-      if (!key) return;
-      pressedKeysRef.current.add(key);
-      if (localPttActive) return;
-
-      const matched = quickPttCombos.find((binding) =>
-        comboMatches(pressedKeysRef.current, binding.combo),
-      );
-      if (matched) {
-        if (!channelListening[matched.channelId]) {
-          warnOnce("ptt_quick_not_listening", `PTT channel "${matched.channelName}" is not selected/listening.`);
-          return;
-        }
-        e.preventDefault();
-        activeHotkeyComboRef.current = matched.combo;
-        void transmitPtt(true, [matched.channelId], matched.channelName);
-        return;
-      }
-
-      if (
-        globalPttCombo.length > 0 &&
-        comboMatches(pressedKeysRef.current, globalPttCombo) &&
-        listenedChannelIds.length > 0
-      ) {
-        e.preventDefault();
-        activeHotkeyComboRef.current = globalPttCombo;
-        void transmitPtt(true, listenedChannelIds, "GLOBAL");
-      } else if (
-        globalPttCombo.length > 0 &&
-        comboMatches(pressedKeysRef.current, globalPttCombo) &&
-        listenedChannelIds.length === 0
-      ) {
-        warnOnce("ptt_global_no_channels", "No listening channels selected for global PTT.");
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const key = formatKeyboardKey(e);
-      if (!key) return;
-      pressedKeysRef.current.delete(key);
-      if (!localPttActive) return;
-      if (!activeHotkeyComboRef.current) return;
-      const stillMatching = comboMatches(pressedKeysRef.current, activeHotkeyComboRef.current);
-      if (!stillMatching) {
-        e.preventDefault();
-        const activeChannels = activePttChannelsRef.current;
-        void transmitPtt(false, activeChannels.length > 0 ? activeChannels : listenedChannelIds);
-      }
-    };
-
-    const handleBlur = () => {
-      pressedKeysRef.current.clear();
-      if (localPttActive) {
-        void transmitPtt(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleBlur);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, [quickPttCombos, globalPttCombo, localPttActive, editMode, listenedChannelIds.join("|"), channelListening, toast]);
+  useCommunityPttHotkeys({
+    communityId,
+    editMode,
+    quickPttCombos,
+    globalPttCombo,
+    listenedChannelIds,
+    localPttActive,
+    activePttChannelsRef,
+    transmitPtt,
+    setPttDebug,
+    toast,
+    debugEnabled: SHOW_PTT_DEBUG,
+  });
 
   // ---------------- AUTO PLACEMENT ----------------
   useEffect(() => {
@@ -971,6 +1132,11 @@ export default function CommunityConsole() {
             </button>
           </div>
         </div>
+        {SHOW_PTT_DEBUG ? (
+          <div className="px-2 py-1 border-b border-gray-800 text-[11px] text-[#9CA3AF] truncate">
+            PTT Debug: {pttDebug || "idle"}
+          </div>
+        ) : null}
 
         <Tab.Group selectedIndex={activeZoneIndex} onChange={setActiveZoneIndex}>
           <Tab.List className="flex bg-[#0C1524] border-b border-gray-700">
@@ -1196,9 +1362,15 @@ export default function CommunityConsole() {
                             <div className="flex flex-row gap-3 py-2 justify-end">
                               <button
                                 id="toneplay"
-                                className="p-2 h-12.5 w-12.5 rounded-lg bg-[#2A3145] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] active:bg-[#3C83F6]/40"
+                                disabled={tonePlaybackBusy}
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${
+                                  tonePlaybackBusy
+                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                    : "bg-[#2A3145] active:bg-[#3C83F6]/40"
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={async (e) => {
+                                  if (tonePlaybackBusy) return;
                                   e.stopPropagation();
                                   const source =
                                     toneQueue.length > 0

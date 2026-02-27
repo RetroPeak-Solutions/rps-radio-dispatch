@@ -166,6 +166,18 @@ declare global {
       theme: {
         set: (theme: "system" | "light" | "dark") => void;
       };
+
+      pttHotkeys: {
+        configure: (communityId?: string) => Promise<boolean>;
+        onEvent: (callback: (data: {
+          scope: "global" | "community";
+          slot: "ch1" | "ch2" | "ch3" | "ch4" | "ch5" | null;
+          communityId: string | null;
+          action: "down" | "up";
+          timestamp: number;
+        }) => void) => () => void;
+        removeListeners: () => void;
+      };
     };
   }
 }
