@@ -22,6 +22,9 @@ import type {
   RadioZone,
 } from "../../lib/types";
 import DragCard from "../../components/UI/DragCard";
+import InstantPTT from "../../../public/assets/imgs/instantptt.png";
+import PageSelect from "../../../public/assets/imgs/pageselect.png";
+import ChannelMarker from "../../../public/assets/imgs/channelmarker.png";
 
 type Position = { x: string; y: string };
 
@@ -357,7 +360,7 @@ export default function CommunityConsole() {
                               <img
                                 width={48}
                                 height={48}
-                                src="/assets/imgs/instantptt.png"
+                                src={InstantPTT}
                               />
                             </button>
 
@@ -409,7 +412,7 @@ export default function CommunityConsole() {
                               <img
                                 width={45}
                                 height={45}
-                                src="/assets/imgs/pageselect.png"
+                                src={PageSelect}
                               />
                             </button>
 
@@ -417,7 +420,7 @@ export default function CommunityConsole() {
                               <img
                                 width={45}
                                 height={45}
-                                src="/assets/imgs/channelmarker.png"
+                                src={ChannelMarker}
                               />
                             </button>
                           </div>

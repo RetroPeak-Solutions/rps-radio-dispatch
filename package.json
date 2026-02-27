@@ -23,6 +23,7 @@
       }
     ],
     "extraResources": [
+      "./public/assets/**",
       { "from": "public/assets", "to": "assets" },
       {
         "from": ".env",
@@ -32,9 +33,14 @@
     "artifactName": "RetroRadio-${version}-${arch}.${ext}",
     "appId": "solutions.retropeak.rto",
     "files": [
+      "dist-electron",
+      "dist",
+      "node_modules",
+      "package.json",
+      "src",
       "dist/**/*",
       "electron/**/*",
-      "public/**/*"
+      "public"
     ],
     "mac": {
       "category": "public.app-category.productivity",
