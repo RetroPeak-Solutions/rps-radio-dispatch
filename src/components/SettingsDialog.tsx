@@ -178,8 +178,8 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   return (
     <Dialog open={open} onClose={onClose} title="Settings" showClose closeOnEsc={!recordingKeybind} footer={
       <div className="flex justify-end gap-3">
-        <button className="px-4 py-2 rounded-xl bg-[#f63c3c1a] border border-[#f63c3c1a] text-[#f63c3c] font-medium" onClick={onClose}>Cancel</button>
-        <button className="px-4 py-2 rounded-xl bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] font-medium" onClick={saveSettings}>Save</button>
+        <button className="cursor-pointer px-4 py-2 rounded-xl bg-[#f63c3c1a] border border-[#f63c3c1a] text-[#f63c3c] font-medium" onClick={onClose}>Cancel</button>
+        <button className="cursor-pointer px-4 py-2 rounded-xl bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] font-medium" onClick={saveSettings}>Save</button>
       </div>
     }>
       <div className="flex flex-col gap-6">
@@ -234,9 +234,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
           <div className="flex flex-col gap-2">
             <div className="flex gap-2">
-              <button className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF] text-sm" onClick={checkUpdates}><Check className="w-4 h-4"/> Check Updates</button>
-              <button className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF] text-sm" onClick={downloadUpdate} disabled={updateInfo.status!=="available"}><Download className="w-4 h-4"/> Download Update</button>
-              <button className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] text-sm" onClick={installUpdate} disabled={updateInfo.status!=="downloaded"}>Install Update</button>
+              <button className="cursor-pointer flex items-center gap-2 px-3 py-1 rounded-lg bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF] text-sm" onClick={checkUpdates}><Check className="w-4 h-4"/> Check Updates</button>
+              <button className="cursor-pointer flex items-center gap-2 px-3 py-1 rounded-lg bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF] text-sm" onClick={downloadUpdate} disabled={updateInfo.status!=="available"}><Download className="w-4 h-4"/> Download Update</button>
+              <button className="cursor-pointer flex items-center gap-2 px-3 py-1 rounded-lg bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] text-sm" onClick={installUpdate} disabled={updateInfo.status!=="downloaded"}>Install Update</button>
             </div>
 
             {updateInfo.status==="downloading" && <div className="w-full bg-white/10 rounded-xl h-2 mt-1"><div className="bg-blue-500 h-2 rounded-xl" style={{width:`${updateInfo.progress.toFixed(2)}%`}}/></div>}

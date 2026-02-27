@@ -56,14 +56,10 @@ export default function DashboardPage() {
         };
     }, []);
 
-    // const res = await axios.get(`${link('dev')}/api/communities/${id}`, {
-    //             withCredentials: true,
-    //         });
-
     async function getMemberships() {
         try {
             setLoading(true)
-            const res = await axios.get(`${link('dev')}/api/auth/communities`, {
+            const res = await axios.get(`${link('prod')}/api/auth/communities`, {
                 withCredentials: true,
             });
 
@@ -97,7 +93,7 @@ export default function DashboardPage() {
         const formData = new FormData();
         formData.set("intent", "leaveCommunity");
         formData.set("communityId", communityId);
-        await axios.post(`${link('dev')}/dashboard`, formData);
+        await axios.post(`${link('prod')}/dashboard`, formData);
         setMenu(null);
     };
 

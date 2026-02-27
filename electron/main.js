@@ -110,7 +110,7 @@ ipcMain.handle("settings.get", async () => {
 ipcMain.handle("settings.set", async (event, newSettings) => {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(newSettings, null, 2), "utf-8");
-    console.log("[Settings] Saved settings:", newSettings);
+    // console.log("[Settings] Saved settings:", newSettings);
     return true;
   } catch (err) {
     console.error("[Settings] Failed to save settings:", err);
