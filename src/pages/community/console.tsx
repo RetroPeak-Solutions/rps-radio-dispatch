@@ -109,11 +109,11 @@ function getCommunityPttBindings(settings: AppSettings | null, communityId?: str
   const found = communities.find((c: any) => c.id === id);
   const channels = found?.channels ?? {};
   const withDefaults: CommunityPttChannels = {
-    ch1: { ...EMPTY_SLOT, ...(channels.ch1 ?? {}) },
-    ch2: { ...EMPTY_SLOT, ...(channels.ch2 ?? {}) },
-    ch3: { ...EMPTY_SLOT, ...(channels.ch3 ?? {}) },
-    ch4: { ...EMPTY_SLOT, ...(channels.ch4 ?? {}) },
-    ch5: { ...EMPTY_SLOT, ...(channels.ch5 ?? {}) },
+    ch1: { ...EMPTY_SLOT, ...(channels?.ch1 ?? {}) },
+    ch2: { ...EMPTY_SLOT, ...(channels?.ch2 ?? {}) },
+    ch3: { ...EMPTY_SLOT, ...(channels?.ch3 ?? {}) },
+    ch4: { ...EMPTY_SLOT, ...(channels?.ch4 ?? {}) },
+    ch5: { ...EMPTY_SLOT, ...(channels?.ch5 ?? {}) },
   };
   return { id, channels: withDefaults };
 }
@@ -280,8 +280,8 @@ export default function CommunityConsole() {
       // return;
     } else if (kind === "end") {
       // void playSfx(AUDIO_SFX.talkEnd, 0.85, consoleSettings.outputDeviceId);
-      osc.frequency.setValueAtTime(900, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
+      // osc.frequency.setValueAtTime(900, ctx.currentTime);
+      // osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
     } else {
       void playSfx(AUDIO_SFX.talkDenied, 0.9, consoleSettings.outputDeviceId);
       // osc.frequency.setValueAtTime(240, ctx.currentTime);
@@ -391,20 +391,23 @@ export default function CommunityConsole() {
     voiceSequenceRef.current = 0;
 
     recorder.ondataavailable = async (event) => {
-      getSessionUser({
-        onSuccess(user) {
-          console.log(user);
-        },
-        onFailed(data) {
-          console.log(data);
-        },
-      });
-      if (!event.data || event.data.size === 0) return;
-      if (!socket || activeVoiceChannelsRef.current.length === 0) return;
+      console.log(`[PTT] Captured voice chunk for channels ${channelIds.join(", ")} (size: ${event.data.size} bytes)`);
+      if (!event.data || event.data.size === 0) {
+        console.log("[PTT] No data in recorded chunk");
+        return;
+      };
+      if (!socket) {
+        console.log("[PTT] Socket not available for recorded chunk");
+        return;
+      }
+      if (channelIds.length === 0) {
+        console.log("[PTT] No active channels for recorded chunk");
+        return;
+      }
       const chunkBase64 = await blobToBase64(event.data);
       socket.emit("dispatch:voice", {
         communityId,
-        channelIds: activeVoiceChannelsRef.current,
+        channelIds: channelIds,
         source: "You",
         mimeType: event.data.type || mimeType || "audio/webm;codecs=opus",
         chunkBase64,
@@ -652,7 +655,15 @@ export default function CommunityConsole() {
     indicatorLabel?: string,
     playHotCue = false,
   ) => {
-    if (!communityId || channelIds.length === 0) return;
+    if (!communityId) {
+      console.warn("Cannot transmit PTT - no community ID");
+      return;
+    }
+    if (active && channelIds.length === 0) {
+      toast("No channels selected for transmission.", { type: "warning" });
+      return;
+    }
+    // if (!communityId || channelIds.length === 0) return;
     const normalizedChannelIds = Array.from(new Set(channelIds.map((id) => normalizeToZoneChannelId(id))));
     if (active) {
       await ensureMicStream();
@@ -861,6 +872,7 @@ export default function CommunityConsole() {
         } else {
           playPttIndicatorTone("start");
         }
+        console.log(`[PTT] Transmit granted for channels ${ids.join(", ")}`);
         void startVoiceCapture(ids.length > 0 ? ids : activePttChannelsRef.current);
         return;
       }
@@ -953,8 +965,8 @@ export default function CommunityConsole() {
     setPttDebug,
     toast,
     txAudio: {
-      playStart: settings?.txAudio.playStart!,
-      playEnd: settings?.txAudio.playEnd!,
+      playStart: settings?.txAudio?.playStart!,
+      playEnd: settings?.txAudio?.playEnd!,
     },
     outputDeviceId: consoleSettings.outputDeviceId,
     debugEnabled: SHOW_PTT_DEBUG,
@@ -1438,8 +1450,8 @@ export default function CommunityConsole() {
             })),
           )
         }
-        onTxStartAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: v!, playEnd: prev?.txAudio.playEnd! } }))}
-        onTxEndAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: prev?.txAudio.playStart!, playEnd: v! } }))}
+        onTxStartAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: v!, playEnd: prev?.txAudio?.playEnd! } }))}
+        onTxEndAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: prev?.txAudio?.playStart!, playEnd: v! } }))}
         editMode={editMode}
         onEditModeChange={setEditMode}
         onSave={updateConsoleSettings}

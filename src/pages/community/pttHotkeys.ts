@@ -282,7 +282,7 @@ export function useCommunityPttHotkeys({
         const activeChannels = activePttChannelsRef.current;
         void transmitPtt(false, activeChannels.length > 0 ? activeChannels : listenedChannelIds);
       }
-      if (txAudio.playEnd) {
+      if (txAudio?.playEnd) {
         void playSfx(AUDIO_SFX.talkEnd, 0.5, outputDeviceId);
       }
     };
