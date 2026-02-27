@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/core";
 import { useLoading } from "@context/Loading";
 import { useSocket } from "@context/SocketProvider";
+import { useToast } from "@context/ToastProvider";
 import axios from "axios";
 import link from "@utils/link";
 import playQuickCall2 from "@utils/playQC2Tone";
@@ -25,6 +26,7 @@ import CommunityConsoleSettingsDialog, {
   type CommunityPttChannels,
   type ConsoleSettingsState,
 } from "@components/UI/CommunityConsoleSettingsDialog";
+import { Settings } from "lucide-react";
 import InstantPTT from "@assets/imgs/instantptt.png";
 import PageSelect from "@assets/imgs/pageselect.png";
 import ChannelMarker from "@assets/imgs/channelmarker.png";
@@ -204,6 +206,7 @@ export default function CommunityConsole() {
   const communityId = params.id;
   const { setLoading } = useLoading();
   const { socket } = useSocket();
+  const { toast } = useToast();
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -238,6 +241,7 @@ export default function CommunityConsole() {
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
   const activePttChannelsRef = useRef<string[]>([]);
   const activeHotkeyComboRef = useRef<string[] | null>(null);
+  const warningCooldownRef = useRef<Record<string, number>>({});
 
   const sensors = useSensors(useSensor(PointerSensor));
   const sortedZones = useMemo(
@@ -483,7 +487,10 @@ export default function CommunityConsole() {
   const transmitTonePackets = async (tones: TonePacket[]) => {
     if (!communityId || tones.length === 0) return;
     const channels = listenedChannelIds.filter((id) => channelPageState[id] === true);
-    if (channels.length === 0) return;
+    if (channels.length === 0) {
+      toast("No active page-state channels selected for tone transmit.", { type: "warning" });
+      return;
+    }
 
     setToneChannelsState(channels, "tx", true);
     setChannelLastSrc((prev) => {
@@ -627,17 +634,29 @@ export default function CommunityConsole() {
   // ---------------- PTT HOTKEY ----------------
   useEffect(() => {
     if ((quickPttCombos.length === 0 && globalPttCombo.length === 0) || editMode) return;
+    const warnOnce = (key: string, message: string) => {
+      const now = Date.now();
+      const last = warningCooldownRef.current[key] ?? 0;
+      if (now - last < 1200) return;
+      warningCooldownRef.current[key] = now;
+      toast(message, { type: "warning" });
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat) return;
       const key = formatKeyboardKey(e);
       if (!key) return;
       pressedKeysRef.current.add(key);
       if (localPttActive) return;
 
       const matched = quickPttCombos.find((binding) =>
-        channelListening[binding.channelId] && comboMatches(pressedKeysRef.current, binding.combo),
+        comboMatches(pressedKeysRef.current, binding.combo),
       );
       if (matched) {
+        if (!channelListening[matched.channelId]) {
+          warnOnce("ptt_quick_not_listening", `PTT channel "${matched.channelName}" is not selected/listening.`);
+          return;
+        }
         e.preventDefault();
         activeHotkeyComboRef.current = matched.combo;
         void transmitPtt(true, [matched.channelId], matched.channelName);
@@ -652,6 +671,12 @@ export default function CommunityConsole() {
         e.preventDefault();
         activeHotkeyComboRef.current = globalPttCombo;
         void transmitPtt(true, listenedChannelIds, "GLOBAL");
+      } else if (
+        globalPttCombo.length > 0 &&
+        comboMatches(pressedKeysRef.current, globalPttCombo) &&
+        listenedChannelIds.length === 0
+      ) {
+        warnOnce("ptt_global_no_channels", "No listening channels selected for global PTT.");
       }
     };
 
@@ -685,7 +710,7 @@ export default function CommunityConsole() {
       window.removeEventListener("keyup", handleKeyUp);
       window.removeEventListener("blur", handleBlur);
     };
-  }, [quickPttCombos, globalPttCombo, localPttActive, editMode, listenedChannelIds.join("|")]);
+  }, [quickPttCombos, globalPttCombo, localPttActive, editMode, listenedChannelIds.join("|"), channelListening, toast]);
 
   // ---------------- AUTO PLACEMENT ----------------
   useEffect(() => {
@@ -859,20 +884,12 @@ export default function CommunityConsole() {
           <h1>{community.name} | Dispatch Console</h1>
           <div className="flex gap-2">
             <button
-              className="px-3 py-1 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
+              className="p-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
               onClick={() => setSettingsDialogOpen(true)}
+              aria-label="Community Console Settings"
+              title="Community Console Settings"
             >
-              Console Settings
-            </button>
-            <button
-              className={`px-3 py-1 rounded ${
-                editMode
-                  ? "bg-green-600"
-                  : "bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
-              }`}
-              onClick={() => setEditMode(!editMode)}
-            >
-              {editMode ? "Editing On" : "Edit Mode"}
+              <Settings className="w-4 h-4" />
             </button>
             <button
               className="px-3 py-1 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
@@ -1178,6 +1195,8 @@ export default function CommunityConsole() {
             })),
           )
         }
+        editMode={editMode}
+        onEditModeChange={setEditMode}
         onSave={updateConsoleSettings}
       />
       <audio ref={rxMonitorAudioRef} className="hidden" autoPlay />

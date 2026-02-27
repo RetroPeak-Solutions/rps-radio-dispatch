@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "./Dialog";
+import { Edit3 } from "lucide-react";
+import { SwitchToggle } from "./SwitchToggle";
 
 export type ConsoleSettingsState = {
   gridSnapping: boolean;
@@ -78,6 +80,8 @@ type Props = {
   value: ConsoleSettingsState;
   pttBindings: CommunityPttBindings;
   channelOptions: ChannelOption[];
+  editMode: boolean;
+  onEditModeChange: (value: boolean) => void;
   onSave: (next: {
     consoleSettings: ConsoleSettingsState;
     pttBindings: CommunityPttBindings;
@@ -90,6 +94,8 @@ export default function CommunityConsoleSettingsDialog({
   value,
   pttBindings,
   channelOptions,
+  editMode,
+  onEditModeChange,
   onSave,
 }: Props) {
   const [draft, setDraft] = useState<ConsoleSettingsState>(value);
@@ -218,15 +224,38 @@ export default function CommunityConsoleSettingsDialog({
     >
       <div className="w-[min(92vw,760px)] grid gap-4 text-white">
         <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
-          <div className="font-semibold">Grid Snapping</div>
-          <label className="mt-2 flex items-center gap-2 text-sm text-[#BFBFBF]">
-            <input
-              type="checkbox"
-              checked={draft.gridSnapping}
-              onChange={(e) => setDraft((prev) => ({ ...prev, gridSnapping: e.target.checked }))}
+          <div className="font-semibold flex items-center gap-2">
+            <Edit3 className="w-4 h-4" />
+            Edit Mode
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#BFBFBF]">
+              Enable drag/reposition mode for channel and tone cards
+            </span>
+            <SwitchToggle
+              size="md"
+              value={editMode}
+              onChange={onEditModeChange}
+              activeColor="#16a34a"
+              inactiveColor="#4b5563"
             />
-            Snap near neighboring cards and enforce gap
-          </label>
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
+          <div className="font-semibold">Grid Snapping</div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#BFBFBF]">
+              Snap near neighboring cards and enforce gap
+            </span>
+            <SwitchToggle
+              size="md"
+              value={draft.gridSnapping}
+              onChange={(checked) => setDraft((prev) => ({ ...prev, gridSnapping: checked }))}
+              activeColor="#3C83F6"
+              inactiveColor="#4b5563"
+            />
+          </div>
         </div>
 
         <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
