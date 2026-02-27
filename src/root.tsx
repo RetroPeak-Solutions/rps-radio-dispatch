@@ -20,7 +20,9 @@ import { useLoading } from "./context/Loading";
 import { SocketLink } from "@utils/link";
 import AppRoutes from "@routes/routes";
 import { useDarkMode } from "@hooks/useDarkMode";
-import { AppErrorBoundary } from "./Wrappers/Error/AppErrorBoundary";
+import { AppErrorBoundary } from "@wrappers/Error/AppErrorBoundary";
+import { IncomingVoiceProvider } from "@context/IncomingVoice";
+import { DispatchAudioProvider } from "@context/DispatchProvider";
 
 /* ===========================
    Fonts
@@ -143,7 +145,11 @@ export default function Root(): JSX.Element {
       <ThemeProvider>
         <SocketProvider url={useSocketLink() ?? socketUrl}>
           <ToastProvider>
-            <AppRoutes />
+            <IncomingVoiceProvider>
+              <DispatchAudioProvider>
+                <AppRoutes />
+              </DispatchAudioProvider>
+            </IncomingVoiceProvider>
           </ToastProvider>
         </SocketProvider>
       </ThemeProvider>
