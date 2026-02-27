@@ -413,6 +413,7 @@ export default function CommunityConsole() {
                                 width={45}
                                 height={45}
                                 src={PageSelect}
+                                className="mt-1.25"
                               />
                             </button>
 
