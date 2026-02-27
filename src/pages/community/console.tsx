@@ -1128,7 +1128,7 @@ export default function CommunityConsole() {
   return (
     <>
       <div className="min-h-screen bg-[#0B1220] text-white font-mono flex flex-col">
-        <div className="flex justify-between p-2 bg-[#0C1524] border-b border-gray-700">
+        <div className="z-10 fixed w-full flex justify-between p-2 bg-[#0C1524] border-b border-gray-700">
           <h1>{community.name} | Dispatch Console</h1>
           <div className="flex gap-2">
             <div
@@ -1160,7 +1160,7 @@ export default function CommunityConsole() {
         ) : null}
 
         <Tab.Group selectedIndex={activeZoneIndex} onChange={setActiveZoneIndex}>
-          <Tab.List className="flex bg-[#0C1524] border-b border-gray-700">
+          <Tab.List className="z-10 fixed top-12 w-full flex bg-[#0C1524] border-b border-gray-700">
             {sortedZones.map((zone) => (
               <Tab
                 key={zone.id}
@@ -1173,12 +1173,12 @@ export default function CommunityConsole() {
             ))}
           </Tab.List>
 
-          <Tab.Panels className="flex-1">
+          <Tab.Panels className="fixed top-24 w-full flex-1 h-full">
             {sortedZones.map((zone, zoneIndex) => (
               <Tab.Panel key={zone.id}>
                 <div
                   ref={zoneIndex === activeZoneIndex ? canvasRef : null}
-                  className="relative w-full"
+                  className="relative w-full h-fit"
                   style={{ height: canvasHeight }}
                 >
 
