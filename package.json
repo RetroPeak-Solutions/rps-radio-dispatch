@@ -9,7 +9,7 @@
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-  "version": "0.0.5",
+  "version": "0.0.6",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
@@ -23,6 +23,7 @@
       }
     ],
     "extraResources": [
+      { "from": "public/assets", "to": "assets" },
       {
         "from": ".env",
         "to": "."
@@ -32,7 +33,8 @@
     "appId": "solutions.retropeak.rto",
     "files": [
       "dist/**/*",
-      "electron/**/*"
+      "electron/**/*",
+      "public/**/*"
     ],
     "mac": {
       "category": "public.app-category.productivity",
