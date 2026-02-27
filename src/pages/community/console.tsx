@@ -168,6 +168,41 @@ function volumeToDb(volume: number) {
   return 20 * Math.log10(volume / 100);
 }
 
+function playPttIndicatorTone(kind: "start" | "end" | "denied") {
+  const AudioCtx =
+    (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtx) return;
+  const ctx: AudioContext = new AudioCtx();
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
+
+  const osc = ctx.createOscillator();
+  osc.type = kind === "denied" ? "square" : "sine";
+  osc.connect(gain);
+  osc.start();
+
+  if (kind === "start") {
+    osc.frequency.setValueAtTime(900, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
+  } else if (kind === "end") {
+    osc.frequency.setValueAtTime(900, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
+  } else {
+    osc.frequency.setValueAtTime(240, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.12);
+  }
+
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
+  osc.stop(ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
+  setTimeout(() => {
+    try {
+      ctx.close();
+    } catch {}
+  }, 220);
+}
+
 function DraggableItem({
   id,
   children,
@@ -610,14 +645,51 @@ export default function CommunityConsole() {
       setChannelLastSrc((prev) => ({ ...prev, [event.channelId as string]: event.source || "Unknown" }));
     };
 
+    const onPttStatus = (event: {
+      status?: "granted" | "ended" | "denied";
+      channelIds?: string[];
+      busyChannelIds?: string[];
+      busyBy?: Array<{ channelId: string; source: string }>;
+    }) => {
+      const ids = event.channelIds ?? [];
+      if (event.status === "granted") {
+        playPttIndicatorTone("start");
+        return;
+      }
+      if (event.status === "ended") {
+        playPttIndicatorTone("end");
+        if (ids.length > 0) setChannelsState(ids, "tx", false);
+        return;
+      }
+      if (event.status === "denied") {
+        playPttIndicatorTone("denied");
+        setLocalPttActive(false);
+        setActivePttIndicator(null);
+        activeHotkeyComboRef.current = null;
+        stopMicStream();
+        const denyIds = ids.length > 0 ? ids : activePttChannelsRef.current;
+        if (denyIds.length > 0) setChannelsState(denyIds, "tx", false);
+        activePttChannelsRef.current = [];
+        const busySummary =
+          event.busyBy && event.busyBy.length > 0
+            ? event.busyBy.map((b) => `${b.channelId} (${b.source})`).join(", ")
+            : (event.busyChannelIds ?? []).join(", ");
+        toast(`PTT denied: channel busy${busySummary ? ` - ${busySummary}` : ""}.`, {
+          type: "warning",
+        });
+      }
+    };
+
     socket.on("dispatch:ptt", onPtt);
     socket.on("dispatch:tone", onTone);
     socket.on("dispatch:last-src", onLastSrc);
+    socket.on("dispatch:ptt-status", onPttStatus);
 
     return () => {
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:tone", onTone);
       socket.off("dispatch:last-src", onLastSrc);
+      socket.off("dispatch:ptt-status", onPttStatus);
       socket.emit("dispatch:leave", { communityId });
     };
   }, [socket, communityId, channelListening]);
@@ -897,15 +969,6 @@ export default function CommunityConsole() {
             >
               Exit Community
             </button>
-            <div
-              className={`px-3 py-1 rounded border text-xs font-semibold ${
-                localPttActive
-                  ? "bg-red-500/20 border-red-400 text-red-300"
-                  : "bg-[#8080801A] border-[#8080801A] text-[#9CA3AF]"
-              }`}
-            >
-              PTT: {localPttActive ? activePttIndicator ?? "ACTIVE" : "IDLE"}
-            </div>
           </div>
         </div>
 
@@ -933,7 +996,7 @@ export default function CommunityConsole() {
                 >
                   <div
                     className="absolute top-1.25 right-6 text-xl font-bold uppercase tracking-widest font-mono select-none text-[#3C83F6] drop-shadow-[0_0_6px_rgba(60,131,246,0.8)] px-2 py-1 rounded-md"
-                    style={{ pointerEvents: "none", zIndex: 1000 }}
+                    style={{ pointerEvents: "none", zIndex: 50 }}
                   >
                     Zulu: {zuluTime}
                   </div>
@@ -1031,13 +1094,13 @@ export default function CommunityConsole() {
                                 >
                                   State:{" "}
                                   {tx
-                                    ? "Voice TX"
+                                    ? "Transmitting"
                                     : toneTx
-                                    ? "Tone TX"
+                                    ? "Transmitting"
                                     : rx
-                                    ? "Voice RX"
+                                    ? "Receiving"
                                     : toneRx
-                                    ? "Tone RX"
+                                    ? "Receiving"
                                     : listening
                                     ? "Listening"
                                     : "Not Active"}
