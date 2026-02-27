@@ -31,6 +31,7 @@ import { Settings } from "lucide-react";
 import InstantPTT from "@assets/imgs/instantptt.png";
 import PageSelect from "@assets/imgs/pageselect.png";
 import ChannelMarker from "@assets/imgs/channelmarker.png";
+import getSessionUser from "@root/src/utils/getSessionUser";
 
 type Position = { x: string; y: string };
 
@@ -125,12 +126,39 @@ function volumeToDb(volume: number) {
 const AUDIO_SFX = {
   talkActive: "/assets/audio/talk_active.mp3",
   talkDenied: "/assets/audio/talk_denied.mp3",
+  talkEnd: "/assets/audio/talk_end.mp3",
   hold: "/assets/audio/hold.wav",
   emergency: "/assets/audio/emergency.wav",
   alert1: "/assets/audio/alert1.wav",
   alert2: "/assets/audio/alert2.wav",
   alert3: "/assets/audio/alert3.wav",
 } as const;
+
+export const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
+    const audio = new Audio(src);
+    audio.volume = volume;
+    const sinkId = outputDeviceId;
+    if (sinkId && typeof (audio as any).setSinkId === "function") {
+      try {
+        await (audio as any).setSinkId(sinkId);
+      } catch {
+        // ignore
+      }
+    }
+
+    await new Promise<void>((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        resolve();
+      };
+      audio.addEventListener("ended", finish, { once: true });
+      audio.addEventListener("error", finish, { once: true });
+      audio.play().catch(finish);
+      setTimeout(finish, 6000);
+    });
+  };
 
 function resolveToneSfx(tone?: Partial<TonePacket>) {
   const raw = `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase();
@@ -222,44 +250,8 @@ export default function CommunityConsole() {
   const incomingVoicePlayingRef = useRef(false);
   const hotCuePendingRef = useRef(false);
 
-  const playSfx = async (src: string, volume = 0.8) => {
-    const audio = new Audio(src);
-    audio.volume = volume;
-    const sinkId = consoleSettings.outputDeviceId;
-    if (sinkId && typeof (audio as any).setSinkId === "function") {
-      try {
-        await (audio as any).setSinkId(sinkId);
-      } catch {
-        // ignore
-      }
-    }
-
-    await new Promise<void>((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        resolve();
-      };
-      audio.addEventListener("ended", finish, { once: true });
-      audio.addEventListener("error", finish, { once: true });
-      audio.play().catch(finish);
-      setTimeout(finish, 6000);
-    });
-  };
-
-  const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
-    if (kind === "start") {
-      void playSfx(AUDIO_SFX.talkActive, 0.85);
-      return;
-    }
-    if (kind === "denied") {
-      void playSfx(AUDIO_SFX.talkDenied, 0.9);
-      return;
-    }
-
-    const AudioCtx =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
+  const playPttIndicatorTone = (kind: "start" | "end" | "denied" ) => {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx: AudioContext = new AudioCtx();
     const gain = ctx.createGain();
@@ -272,15 +264,29 @@ export default function CommunityConsole() {
     osc.connect(gain);
     osc.start();
 
+    // if (kind === "start") {
+      
+    //   return;
+    // }
+    // if (kind === "denied") {
+      
+    //   return;
+    // }
+
     if (kind === "start") {
-      osc.frequency.setValueAtTime(900, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
+      void playSfx(AUDIO_SFX.talkActive, 0.85, consoleSettings.outputDeviceId);
+      // osc.frequency.setValueAtTime(900, ctx.currentTime);
+      // osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
+      // return;
     } else if (kind === "end") {
-      osc.frequency.setValueAtTime(900, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
+      void playSfx(AUDIO_SFX.talkEnd, 0.85, consoleSettings.outputDeviceId);
+      // osc.frequency.setValueAtTime(900, ctx.currentTime);
+      // osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
     } else {
-      osc.frequency.setValueAtTime(240, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.12);
+      void playSfx(AUDIO_SFX.talkDenied, 0.9, consoleSettings.outputDeviceId);
+      // osc.frequency.setValueAtTime(240, ctx.currentTime);
+      // osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.12);
+      // return;
     }
 
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
@@ -385,6 +391,14 @@ export default function CommunityConsole() {
     voiceSequenceRef.current = 0;
 
     recorder.ondataavailable = async (event) => {
+      getSessionUser({
+          onSuccess(user) {
+            console.log(user);
+          },
+          onFailed(data) {
+            console.log(data);
+          },
+        });
       if (!event.data || event.data.size === 0) return;
       if (!socket || activeVoiceChannelsRef.current.length === 0) return;
       const chunkBase64 = await blobToBase64(event.data);
@@ -789,11 +803,7 @@ export default function CommunityConsole() {
 
     socket.emit("dispatch:join", { communityId, source: "Dispatch Console" });
 
-    const onPtt = (event: {
-      channelIds: string[];
-      active: boolean;
-      source?: string;
-    }) => {
+    const onPtt = (event: { channelIds: string[]; active: boolean; source?: string; }) => {
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
       const normalizedIds = Array.from(new Set(ids.map((id) => normalizeToZoneChannelId(id))));
@@ -942,6 +952,7 @@ export default function CommunityConsole() {
     transmitPtt,
     setPttDebug,
     toast,
+    outputDeviceId: consoleSettings.outputDeviceId,
     debugEnabled: SHOW_PTT_DEBUG,
   });
 

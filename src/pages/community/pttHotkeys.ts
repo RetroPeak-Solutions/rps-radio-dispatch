@@ -1,6 +1,17 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import type { CommunityPttChannels } from "@components/UI/CommunityConsoleSettingsDialog";
 
+const AUDIO_SFX = {
+  talkActive: "/assets/audio/talk_active.mp3",
+  talkDenied: "/assets/audio/talk_denied.mp3",
+  talkEnd: "/assets/audio/talk_end.mp3",
+  hold: "/assets/audio/hold.wav",
+  emergency: "/assets/audio/emergency.wav",
+  alert1: "/assets/audio/alert1.wav",
+  alert2: "/assets/audio/alert2.wav",
+  alert3: "/assets/audio/alert3.wav",
+} as const;
+
 export type QuickPttCombo = {
   slotKey: keyof CommunityPttChannels;
   channelId: string;
@@ -22,6 +33,7 @@ type PttHotkeysOptions = {
     indicatorLabel?: string,
     playHotCue?: boolean,
   ) => Promise<void> | void;
+  outputDeviceId: any;
   setPttDebug: (value: string) => void;
   toast: (message: string, options?: { type?: "warning" | "success" | "error" | "info" }) => void;
   debugEnabled?: boolean;
@@ -77,6 +89,32 @@ function comboMatches(activeKeys: Set<string>, combo: string[]) {
   return expected.every((k, i) => k === active[i]);
 }
 
+const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
+  const audio = new Audio(src);
+  audio.volume = volume;
+  const sinkId = outputDeviceId;
+  if (sinkId && typeof (audio as any).setSinkId === "function") {
+    try {
+      await (audio as any).setSinkId(sinkId);
+    } catch {
+      // ignore
+    }
+  }
+
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    audio.addEventListener("ended", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    audio.play().catch(finish);
+    setTimeout(finish, 6000);
+  });
+};
+
 export function useCommunityPttHotkeys({
   communityId,
   editMode,
@@ -88,6 +126,7 @@ export function useCommunityPttHotkeys({
   transmitPtt,
   setPttDebug,
   toast,
+  outputDeviceId,
   debugEnabled = false,
 }: PttHotkeysOptions) {
   const pressedKeysRef = useRef<Set<string>>(new Set());
@@ -192,31 +231,29 @@ export function useCommunityPttHotkeys({
         comboMatches(pressedKeysRef.current, binding.combo),
       );
       if (matched) {
+        if (!listenedChannelIds.includes(matched.channelId)) {
+          warnOnce("ptt_quick_not_listening", `PTT channel "${matched.channelName}" is not selected/listening.`);
+          return;
+        }
         updateDebug(
           `quick:${matched.slotKey} combo=[${matched.combo.join("+")}] resolved=${matched.channelId} action=activate`,
         );
         e.preventDefault();
         activeHotkeyComboRef.current = matched.combo;
-        void transmitPtt(true, [matched.channelId], matched.channelName, true);
+        void transmitPtt(true, [matched.channelId], matched.channelName);
+        void playSfx(AUDIO_SFX.talkActive, 0.5, outputDeviceId);
         return;
       }
 
-      if (
-        globalPttCombo.length > 0 &&
-        comboMatches(pressedKeysRef.current, globalPttCombo) &&
-        listenedChannelIds.length > 0
-      ) {
+      if (globalPttCombo.length > 0 && comboMatches(pressedKeysRef.current, globalPttCombo) && listenedChannelIds.length > 0) {
         updateDebug(
           `global combo=[${globalPttCombo.join("+")}] listened=${listenedChannelIds.join(",")} action=activate`,
         );
         e.preventDefault();
         activeHotkeyComboRef.current = globalPttCombo;
         void transmitPtt(true, listenedChannelIds, "GLOBAL", true);
-      } else if (
-        globalPttCombo.length > 0 &&
-        comboMatches(pressedKeysRef.current, globalPttCombo) &&
-        listenedChannelIds.length === 0
-      ) {
+        void playSfx(AUDIO_SFX.talkActive, 0.5, outputDeviceId);
+      } else if (globalPttCombo.length > 0 && comboMatches(pressedKeysRef.current, globalPttCombo) && listenedChannelIds.length === 0) {
         updateDebug(
           `global combo=[${globalPttCombo.join("+")}] listened=none action=blocked`,
         );
@@ -236,6 +273,7 @@ export function useCommunityPttHotkeys({
         const activeChannels = activePttChannelsRef.current;
         void transmitPtt(false, activeChannels.length > 0 ? activeChannels : listenedChannelIds);
       }
+      void playSfx(AUDIO_SFX.talkEnd, 0.5, outputDeviceId);
     };
 
     const handleBlur = () => {
