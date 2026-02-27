@@ -135,30 +135,30 @@ const AUDIO_SFX = {
 } as const;
 
 const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
-    const audio = new Audio(src);
-    audio.volume = volume;
-    const sinkId = outputDeviceId;
-    if (sinkId && typeof (audio as any).setSinkId === "function") {
-      try {
-        await (audio as any).setSinkId(sinkId);
-      } catch {
-        // ignore
-      }
+  const audio = new Audio(src);
+  audio.volume = volume;
+  const sinkId = outputDeviceId;
+  if (sinkId && typeof (audio as any).setSinkId === "function") {
+    try {
+      await (audio as any).setSinkId(sinkId);
+    } catch {
+      // ignore
     }
+  }
 
-    await new Promise<void>((resolve) => {
-      let done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        resolve();
-      };
-      audio.addEventListener("ended", finish, { once: true });
-      audio.addEventListener("error", finish, { once: true });
-      audio.play().catch(finish);
-      setTimeout(finish, 6000);
-    });
-  };
+  await new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      resolve();
+    };
+    audio.addEventListener("ended", finish, { once: true });
+    audio.addEventListener("error", finish, { once: true });
+    audio.play().catch(finish);
+    setTimeout(finish, 6000);
+  });
+};
 
 function resolveToneSfx(tone?: Partial<TonePacket>) {
   const raw = `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase();
@@ -250,7 +250,7 @@ export default function CommunityConsole() {
   const incomingVoicePlayingRef = useRef(false);
   const hotCuePendingRef = useRef(false);
 
-  const playPttIndicatorTone = (kind: "start" | "end" | "denied" ) => {
+  const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx: AudioContext = new AudioCtx();
@@ -265,11 +265,11 @@ export default function CommunityConsole() {
     osc.start();
 
     // if (kind === "start") {
-      
+
     //   return;
     // }
     // if (kind === "denied") {
-      
+
     //   return;
     // }
 
@@ -294,7 +294,7 @@ export default function CommunityConsole() {
     setTimeout(() => {
       try {
         ctx.close();
-      } catch {}
+      } catch { }
     }, 220);
   };
 
@@ -392,13 +392,13 @@ export default function CommunityConsole() {
 
     recorder.ondataavailable = async (event) => {
       getSessionUser({
-          onSuccess(user) {
-            console.log(user);
-          },
-          onFailed(data) {
-            console.log(data);
-          },
-        });
+        onSuccess(user) {
+          console.log(user);
+        },
+        onFailed(data) {
+          console.log(data);
+        },
+      });
       if (!event.data || event.data.size === 0) return;
       if (!socket || activeVoiceChannelsRef.current.length === 0) return;
       const chunkBase64 = await blobToBase64(event.data);
@@ -507,19 +507,19 @@ export default function CommunityConsole() {
         return candidates[0] ?? slotId;
       };
       return (
-      (Object.entries(activeCommunityPtt.channels) as Array<
-        [keyof CommunityPttChannels, CommunityPttChannels[keyof CommunityPttChannels]]
-      >)
-        .filter(([, slot]) => slot.id && Array.isArray(slot.key) && slot.key.length > 0)
-        .map(([slotKey, slot]) => ({
-          slotKey,
-          channelId: resolveSlotChannelId(slot.id),
-          channelName:
-            channelNameById[
+        (Object.entries(activeCommunityPtt.channels) as Array<
+          [keyof CommunityPttChannels, CommunityPttChannels[keyof CommunityPttChannels]]
+        >)
+          .filter(([, slot]) => slot.id && Array.isArray(slot.key) && slot.key.length > 0)
+          .map(([slotKey, slot]) => ({
+            slotKey,
+            channelId: resolveSlotChannelId(slot.id),
+            channelName:
+              channelNameById[
               resolveSlotChannelId(slot.id)
-            ] ?? channelNameById[slot.id] ?? slot.id,
-          combo: slot.key.filter(Boolean),
-        }))
+              ] ?? channelNameById[slot.id] ?? slot.id,
+            combo: slot.key.filter(Boolean),
+          }))
       );
     },
     [activeCommunityPtt, channelNameById, allZoneChannelIds, zoneChannelIdsByRadioChannelId, channelListening],
@@ -1131,6 +1131,12 @@ export default function CommunityConsole() {
         <div className="flex justify-between p-2 bg-[#0C1524] border-b border-gray-700">
           <h1>{community.name} | Dispatch Console</h1>
           <div className="flex gap-2">
+            <div
+              className=" text-xl font-bold uppercase tracking-widest font-mono select-none text-[#3C83F6] drop-shadow-[0_0_6px_rgba(60,131,246,0.8)] px-2 py-1 rounded-md"
+              style={{ pointerEvents: "none", zIndex: 100 }}
+            >
+              Zulu: {zuluTime}
+            </div>
             <button
               className="p-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
               onClick={() => setSettingsDialogOpen(true)}
@@ -1175,12 +1181,6 @@ export default function CommunityConsole() {
                   className="relative w-full"
                   style={{ height: canvasHeight }}
                 >
-                  <div
-                    className="absolute top-1.25 right-6 text-xl font-bold uppercase tracking-widest font-mono select-none text-[#3C83F6] drop-shadow-[0_0_6px_rgba(60,131,246,0.8)] px-2 py-1 rounded-md"
-                    style={{ pointerEvents: "none", zIndex: 50 }}
-                  >
-                    Zulu: {zuluTime}
-                  </div>
 
                   <DndContext
                     sensors={sensors}
@@ -1201,14 +1201,14 @@ export default function CommunityConsole() {
                       const stateClass = tx
                         ? "border-red-400 shadow-[0_0_18px_rgba(248,113,113,0.5)]"
                         : toneTx
-                        ? "border-orange-400 shadow-[0_0_18px_rgba(251,146,60,0.5)]"
-                        : rx
-                        ? "border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.4)]"
-                        : toneRx
-                        ? "border-yellow-400 shadow-[0_0_16px_rgba(250,204,21,0.45)]"
-                        : listening
-                        ? "border-[#3C83F6] shadow-[0_0_16px_rgba(60,131,246,0.35)]"
-                        : "border-[#2A3145]";
+                          ? "border-orange-400 shadow-[0_0_18px_rgba(251,146,60,0.5)]"
+                          : rx
+                            ? "border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.4)]"
+                            : toneRx
+                              ? "border-yellow-400 shadow-[0_0_16px_rgba(250,204,21,0.45)]"
+                              : listening
+                                ? "border-[#3C83F6] shadow-[0_0_16px_rgba(60,131,246,0.35)]"
+                                : "border-[#2A3145]";
 
                       return (
                         <DraggableItem drag={editMode} key={ch.id} id={ch.id} pos={pos}>
@@ -1224,15 +1224,14 @@ export default function CommunityConsole() {
                               <button
                                 id="instantptt"
                                 data-interactive="true"
-                                className={`p-2 rounded-lg ${
-                                  !channelChildrenEnabled
+                                className={`p-2 rounded-lg ${!channelChildrenEnabled
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : tx
-                                    ? "bg-red-500/80"
-                                    : listening
-                                    ? "bg-[#3C83F61A] border border-[#3C83F61A]"
-                                    : "bg-[#9CA3AF]"
-                                }`}
+                                      ? "bg-red-500/80"
+                                      : listening
+                                        ? "bg-[#3C83F61A] border border-[#3C83F61A]"
+                                        : "bg-[#9CA3AF]"
+                                  }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => {
                                   if (!channelChildrenEnabled) return;
@@ -1259,32 +1258,31 @@ export default function CommunityConsole() {
                                   Last SRC: {channelLastSrc[ch.id] ?? "None"}
                                 </span>
                                 <span
-                                  className={`text-xs ${
-                                    tx
+                                  className={`text-xs ${tx
                                       ? "text-red-400"
                                       : toneTx
-                                      ? "text-orange-300"
-                                      : rx
-                                      ? "text-emerald-400"
-                                      : toneRx
-                                      ? "text-yellow-300"
-                                      : listening
-                                      ? "text-[#3C83F6]"
-                                      : "text-[#6B7280]"
-                                  }`}
+                                        ? "text-orange-300"
+                                        : rx
+                                          ? "text-emerald-400"
+                                          : toneRx
+                                            ? "text-yellow-300"
+                                            : listening
+                                              ? "text-[#3C83F6]"
+                                              : "text-[#6B7280]"
+                                    }`}
                                 >
                                   State:{" "}
                                   {tx
                                     ? "Transmitting"
                                     : toneTx
-                                    ? "Transmitting"
-                                    : rx
-                                    ? "Receiving"
-                                    : toneRx
-                                    ? "Receiving"
-                                    : listening
-                                    ? "Listening"
-                                    : "Not Active"}
+                                      ? "Transmitting"
+                                      : rx
+                                        ? "Receiving"
+                                        : toneRx
+                                          ? "Receiving"
+                                          : listening
+                                            ? "Listening"
+                                            : "Not Active"}
                                 </span>
                               </div>
                             </div>
@@ -1292,9 +1290,8 @@ export default function CommunityConsole() {
                             <div className="flex flex-row gap-2">
                               <div
                                 data-interactive="true"
-                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${
-                                  channelChildrenEnabled ? "bg-[#9CA3AF]" : "bg-[#6B7280]/70"
-                                }`}
+                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${channelChildrenEnabled ? "bg-[#9CA3AF]" : "bg-[#6B7280]/70"
+                                  }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -1314,13 +1311,12 @@ export default function CommunityConsole() {
 
                               <button
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
-                                  !channelChildrenEnabled
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : pageState
-                                    ? "bg-amber-500/70"
-                                    : "bg-[#9CA3AF]"
-                                }`}
+                                      ? "bg-amber-500/70"
+                                      : "bg-[#9CA3AF]"
+                                  }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
@@ -1334,13 +1330,12 @@ export default function CommunityConsole() {
 
                               <button
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
-                                  !channelChildrenEnabled
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : listening
-                                    ? "bg-[#3C83F61A] border border-[#3C83F61A]"
-                                    : "bg-[#9CA3AF]"
-                                }`}
+                                      ? "bg-[#3C83F61A] border border-[#3C83F61A]"
+                                      : "bg-[#9CA3AF]"
+                                  }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
@@ -1364,11 +1359,10 @@ export default function CommunityConsole() {
                       return (
                         <DraggableItem key={t.id} id={t.id} pos={pos} drag={editMode}>
                           <DragCard
-                            className={`w-[300px] h-[150px] bg-gradient-to-b from-[#1F2434] to-[#151A26] border ${
-                              queued
+                            className={`w-[300px] h-[150px] bg-gradient-to-b from-[#1F2434] to-[#151A26] border ${queued
                                 ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
                                 : "border-[#2A3145]"
-                            }`}
+                              }`}
                           >
                             <h1>{t.toneSet.name}</h1>
                             <small className="text-[#9CA3AF]">
@@ -1378,11 +1372,10 @@ export default function CommunityConsole() {
                               <button
                                 id="toneplay"
                                 disabled={tonePlaybackBusy}
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${
-                                  tonePlaybackBusy
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${tonePlaybackBusy
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : "bg-[#2A3145] active:bg-[#3C83F6]/40"
-                                }`}
+                                  }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={async (e) => {
                                   if (tonePlaybackBusy) return;
@@ -1406,11 +1399,10 @@ export default function CommunityConsole() {
                               </button>
                               <button
                                 id="toneselect"
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${
-                                  queued
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${queued
                                     ? "bg-amber-500/70 ring-2 ring-amber-300"
                                     : "bg-[#2A3145] hover:bg-[#38425c]"
-                                }`}
+                                  }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1446,8 +1438,8 @@ export default function CommunityConsole() {
             })),
           )
         }
-        onTxStartAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: {  playStart: v!, playEnd: prev?.txAudio.playEnd! }}))}
-        onTxEndAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: {  playStart: prev?.txAudio.playStart!, playEnd: v! }}))}
+        onTxStartAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: v!, playEnd: prev?.txAudio.playEnd! } }))}
+        onTxEndAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: prev?.txAudio.playStart!, playEnd: v! } }))}
         editMode={editMode}
         onEditModeChange={setEditMode}
         onSave={updateConsoleSettings}
