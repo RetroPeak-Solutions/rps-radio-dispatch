@@ -90,11 +90,16 @@ function normalizeSettings(settings: AppSettings | null): AppSettings {
   return {
     ...(settings ?? {}),
     placements: settings?.placements ?? { channels: [], tones: [], alerts: [] },
-    keybinds: settings?.keybinds ?? { ptt: { global: { key: [] }, communities: [] } },
+    keybinds: settings?.keybinds ?? {
+      ptt: { global: { key: [] }, communities: [] },
+    },
   } as AppSettings;
 }
 
-function getCommunityConsoleSettings(settings: AppSettings | null, communityId?: string) {
+function getCommunityConsoleSettings(
+  settings: AppSettings | null,
+  communityId?: string,
+) {
   if (!communityId) return DEFAULT_CONSOLE_SETTINGS;
   const raw = (settings as any)?.communityConsole?.[communityId] ?? {};
   return {
@@ -103,7 +108,10 @@ function getCommunityConsoleSettings(settings: AppSettings | null, communityId?:
   } as ConsoleSettingsState;
 }
 
-function getCommunityPttBindings(settings: AppSettings | null, communityId?: string): CommunityPttBindings {
+function getCommunityPttBindings(
+  settings: AppSettings | null,
+  communityId?: string,
+): CommunityPttBindings {
   const id = communityId ?? "";
   const communities = settings?.keybinds?.ptt?.communities ?? [];
   const found = communities.find((c: any) => c.id === id);
@@ -163,11 +171,27 @@ const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
 function resolveToneSfx(tone?: Partial<TonePacket>) {
   const raw = `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase();
   if (!raw) return null;
-  if (raw.includes("emergency") || raw.includes("panic")) return AUDIO_SFX.emergency;
+  if (raw.includes("emergency") || raw.includes("panic"))
+    return AUDIO_SFX.emergency;
   if (raw.includes("hold")) return AUDIO_SFX.hold;
-  if (raw.includes("alert1") || raw.includes("alert 1") || raw.includes("alert_1")) return AUDIO_SFX.alert1;
-  if (raw.includes("alert2") || raw.includes("alert 2") || raw.includes("alert_2")) return AUDIO_SFX.alert2;
-  if (raw.includes("alert3") || raw.includes("alert 3") || raw.includes("alert_3")) return AUDIO_SFX.alert3;
+  if (
+    raw.includes("alert1") ||
+    raw.includes("alert 1") ||
+    raw.includes("alert_1")
+  )
+    return AUDIO_SFX.alert1;
+  if (
+    raw.includes("alert2") ||
+    raw.includes("alert 2") ||
+    raw.includes("alert_2")
+  )
+    return AUDIO_SFX.alert2;
+  if (
+    raw.includes("alert3") ||
+    raw.includes("alert 3") ||
+    raw.includes("alert_3")
+  )
+    return AUDIO_SFX.alert3;
   return null;
 }
 
@@ -182,7 +206,9 @@ function DraggableItem({
   pos: { x: number; y: number };
   drag: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id,
+  });
 
   return (
     <div
@@ -213,29 +239,49 @@ export default function CommunityConsole() {
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
-  const [consoleSettings, setConsoleSettings] =
-    useState<ConsoleSettingsState>(DEFAULT_CONSOLE_SETTINGS);
-  const [communityPttBindings, setCommunityPttBindings] = useState<CommunityPttBindings>({
-    id: "",
-    channels: DEFAULT_COMMUNITY_PTT_CHANNELS,
-  });
+  const [consoleSettings, setConsoleSettings] = useState<ConsoleSettingsState>(
+    DEFAULT_CONSOLE_SETTINGS,
+  );
+  const [communityPttBindings, setCommunityPttBindings] =
+    useState<CommunityPttBindings>({
+      id: "",
+      channels: DEFAULT_COMMUNITY_PTT_CHANNELS,
+    });
   const [settingsDialogOpen, setSettingsDialogOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [activeZoneIndex, setActiveZoneIndex] = useState(0);
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [positions, setPositions] = useState<
+    Record<string, { x: number; y: number }>
+  >({});
   const [volumes, setVolumes] = useState<Record<string, number>>({});
-  const [channelListening, setChannelListening] = useState<Record<string, boolean>>({});
-  const [channelPageState, setChannelPageState] = useState<Record<string, boolean>>({});
-  const [channelLastSrc, setChannelLastSrc] = useState<Record<string, string>>({});
-  const [channelReceiving, setChannelReceiving] = useState<Record<string, boolean>>({});
-  const [channelTransmitting, setChannelTransmitting] = useState<Record<string, boolean>>({});
-  const [channelToneReceiving, setChannelToneReceiving] = useState<Record<string, boolean>>({});
-  const [channelToneTransmitting, setChannelToneTransmitting] = useState<Record<string, boolean>>({});
+  const [channelListening, setChannelListening] = useState<
+    Record<string, boolean>
+  >({});
+  const [channelPageState, setChannelPageState] = useState<
+    Record<string, boolean>
+  >({});
+  const [channelLastSrc, setChannelLastSrc] = useState<Record<string, string>>(
+    {},
+  );
+  const [channelReceiving, setChannelReceiving] = useState<
+    Record<string, boolean>
+  >({});
+  const [channelTransmitting, setChannelTransmitting] = useState<
+    Record<string, boolean>
+  >({});
+  const [channelToneReceiving, setChannelToneReceiving] = useState<
+    Record<string, boolean>
+  >({});
+  const [channelToneTransmitting, setChannelToneTransmitting] = useState<
+    Record<string, boolean>
+  >({});
   const [toneQueue, setToneQueue] = useState<string[]>([]);
   const [canvasHeight, setCanvasHeight] = useState(MIN_CANVAS_HEIGHT);
   const [zuluTime, setZuluTime] = useState("");
   const [localPttActive, setLocalPttActive] = useState(false);
-  const [activePttIndicator, setActivePttIndicator] = useState<string | null>(null);
+  const [activePttIndicator, setActivePttIndicator] = useState<string | null>(
+    null,
+  );
   const [pttDebug, setPttDebug] = useState("");
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
@@ -246,12 +292,15 @@ export default function CommunityConsole() {
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const activeVoiceChannelsRef = useRef<string[]>([]);
   const voiceSequenceRef = useRef(0);
-  const incomingVoiceQueueRef = useRef<Array<{ src: string; volume: number }>>([]);
+  const incomingVoiceQueueRef = useRef<Array<{ src: string; volume: number }>>(
+    [],
+  );
   const incomingVoicePlayingRef = useRef(false);
   const hotCuePendingRef = useRef(false);
 
   const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
-    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx: AudioContext = new AudioCtx();
     const gain = ctx.createGain();
@@ -264,37 +313,21 @@ export default function CommunityConsole() {
     osc.connect(gain);
     osc.start();
 
-    // if (kind === "start") {
-
-    //   return;
-    // }
-    // if (kind === "denied") {
-
-    //   return;
-    // }
-
     if (kind === "start") {
-      // void playSfx(AUDIO_SFX.talkActive, 0.85, consoleSettings.outputDeviceId);
-      // osc.frequency.setValueAtTime(900, ctx.currentTime);
-      // osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
-      // return;
     } else if (kind === "end") {
-      // void playSfx(AUDIO_SFX.talkEnd, 0.85, consoleSettings.outputDeviceId);
-      // osc.frequency.setValueAtTime(900, ctx.currentTime);
-      // osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
     } else {
       void playSfx(AUDIO_SFX.talkDenied, 0.9, consoleSettings.outputDeviceId);
-      // osc.frequency.setValueAtTime(240, ctx.currentTime);
-      // osc.frequency.exponentialRampToValueAtTime(180, ctx.currentTime + 0.12);
-      // return;
     }
 
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
+    gain.gain.exponentialRampToValueAtTime(
+      0.0001,
+      ctx.currentTime + (kind === "denied" ? 0.14 : 0.09),
+    );
     osc.stop(ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
     setTimeout(() => {
       try {
         ctx.close();
-      } catch { }
+      } catch {}
     }, 220);
   };
 
@@ -342,6 +375,7 @@ export default function CommunityConsole() {
     };
     audio.addEventListener("ended", finish, { once: true });
     audio.addEventListener("error", finish, { once: true });
+    audio.play().catch(finish);
     play().catch(finish);
   };
 
@@ -354,14 +388,21 @@ export default function CommunityConsole() {
     if (listened.length === 0) return;
     const perChannelVolumes = listened.map((id) => volumes[id] ?? 50);
     const volume = Math.max(...perChannelVolumes, 50) / 100;
-    const blob = decodeBase64ToBlob(chunkBase64, mimeType || "audio/webm;codecs=opus");
+    const blob = decodeBase64ToBlob(
+      chunkBase64,
+      mimeType || "audio/webm;codecs=opus",
+    );
     const src = URL.createObjectURL(blob);
+
     incomingVoiceQueueRef.current.push({ src, volume });
     drainIncomingVoiceQueue();
   };
 
   const stopVoiceCapture = () => {
-    if (voiceRecorderRef.current && voiceRecorderRef.current.state !== "inactive") {
+    if (
+      voiceRecorderRef.current &&
+      voiceRecorderRef.current.state !== "inactive"
+    ) {
       try {
         voiceRecorderRef.current.stop();
       } catch {
@@ -375,7 +416,11 @@ export default function CommunityConsole() {
   const startVoiceCapture = async (channelIds: string[]) => {
     if (!socket || !communityId || channelIds.length === 0) return;
     activeVoiceChannelsRef.current = channelIds;
-    if (voiceRecorderRef.current && voiceRecorderRef.current.state !== "inactive") return;
+    if (
+      voiceRecorderRef.current &&
+      voiceRecorderRef.current.state !== "inactive"
+    )
+      return;
     const stream = await ensureMicStream();
     if (!stream || typeof MediaRecorder === "undefined") return;
 
@@ -385,17 +430,23 @@ export default function CommunityConsole() {
       "audio/ogg;codecs=opus",
       "audio/ogg",
     ];
-    const mimeType = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const mimeType =
+      mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
+    const recorder = new MediaRecorder(
+      stream,
+      mimeType ? { mimeType } : undefined,
+    );
     voiceRecorderRef.current = recorder;
     voiceSequenceRef.current = 0;
 
     recorder.ondataavailable = async (event) => {
-      console.log(`[PTT] Captured voice chunk for channels ${channelIds.join(", ")} (size: ${event.data.size} bytes)`);
+      console.log(
+        `[PTT] Captured voice chunk for channels ${channelIds.join(", ")} (size: ${event.data.size} bytes)`,
+      );
       if (!event.data || event.data.size === 0) {
         console.log("[PTT] No data in recorded chunk");
         return;
-      };
+      }
       if (!socket) {
         console.log("[PTT] Socket not available for recorded chunk");
         return;
@@ -426,7 +477,12 @@ export default function CommunityConsole() {
 
   const sensors = useSensors(useSensor(PointerSensor));
   const sortedZones = useMemo(
-    () => (community ? [...community.radioZones].sort((a, b) => a.codeplugIndex - b.codeplugIndex) : []),
+    () =>
+      community
+        ? [...community.radioZones].sort(
+            (a, b) => a.codeplugIndex - b.codeplugIndex,
+          )
+        : [],
     [community],
   );
   const activeZone = sortedZones[activeZoneIndex];
@@ -439,7 +495,10 @@ export default function CommunityConsole() {
     [activeZone],
   );
   const listenedChannelIds = useMemo(
-    () => Object.entries(channelListening).filter(([, on]) => on).map(([id]) => id),
+    () =>
+      Object.entries(channelListening)
+        .filter(([, on]) => on)
+        .map(([id]) => id),
     [channelListening],
   );
   const channelNameById = useMemo(() => {
@@ -462,7 +521,8 @@ export default function CommunityConsole() {
     });
     sortedZones.forEach((zone) => {
       zone.channels.forEach((entry) => {
-        if (entry.channelId && !map[entry.channelId]) map[entry.channelId] = entry.id;
+        if (entry.channelId && !map[entry.channelId])
+          map[entry.channelId] = entry.id;
       });
     });
     return map;
@@ -495,38 +555,49 @@ export default function CommunityConsole() {
     return map;
   }, [sortedZones]);
   const activeCommunityPtt = useMemo(() => {
-    if (communityPttBindings?.id && communityPttBindings.id === (communityId ?? "")) {
+    if (
+      communityPttBindings?.id &&
+      communityPttBindings.id === (communityId ?? "")
+    ) {
       return communityPttBindings;
     }
     return getCommunityPttBindings(settings, communityId);
   }, [communityPttBindings, settings, communityId]);
-  const quickPttCombos = useMemo(
-    () => {
-      const resolveSlotChannelId = (slotId: string) => {
-        if (allZoneChannelIds.has(slotId)) return slotId;
-        const candidates = zoneChannelIdsByRadioChannelId[slotId] ?? [];
-        const listenedCandidate = candidates.find((id) => channelListening[id]);
-        if (listenedCandidate) return listenedCandidate;
-        return candidates[0] ?? slotId;
-      };
-      return (
-        (Object.entries(activeCommunityPtt.channels) as Array<
-          [keyof CommunityPttChannels, CommunityPttChannels[keyof CommunityPttChannels]]
-        >)
-          .filter(([, slot]) => slot.id && Array.isArray(slot.key) && slot.key.length > 0)
-          .map(([slotKey, slot]) => ({
-            slotKey,
-            channelId: resolveSlotChannelId(slot.id),
-            channelName:
-              channelNameById[
-              resolveSlotChannelId(slot.id)
-              ] ?? channelNameById[slot.id] ?? slot.id,
-            combo: slot.key.filter(Boolean),
-          }))
-      );
-    },
-    [activeCommunityPtt, channelNameById, allZoneChannelIds, zoneChannelIdsByRadioChannelId, channelListening],
-  );
+  const quickPttCombos = useMemo(() => {
+    const resolveSlotChannelId = (slotId: string) => {
+      if (allZoneChannelIds.has(slotId)) return slotId;
+      const candidates = zoneChannelIdsByRadioChannelId[slotId] ?? [];
+      const listenedCandidate = candidates.find((id) => channelListening[id]);
+      if (listenedCandidate) return listenedCandidate;
+      return candidates[0] ?? slotId;
+    };
+    return (
+      Object.entries(activeCommunityPtt.channels) as Array<
+        [
+          keyof CommunityPttChannels,
+          CommunityPttChannels[keyof CommunityPttChannels],
+        ]
+      >
+    )
+      .filter(
+        ([, slot]) => slot.id && Array.isArray(slot.key) && slot.key.length > 0,
+      )
+      .map(([slotKey, slot]) => ({
+        slotKey,
+        channelId: resolveSlotChannelId(slot.id),
+        channelName:
+          channelNameById[resolveSlotChannelId(slot.id)] ??
+          channelNameById[slot.id] ??
+          slot.id,
+        combo: slot.key.filter(Boolean),
+      }));
+  }, [
+    activeCommunityPtt,
+    channelNameById,
+    allZoneChannelIds,
+    zoneChannelIdsByRadioChannelId,
+    channelListening,
+  ]);
   const globalPttCombo = useMemo(
     () => settings?.keybinds?.ptt?.global?.key?.filter(Boolean) ?? [],
     [settings],
@@ -543,7 +614,9 @@ export default function CommunityConsole() {
     const candidates = zoneChannelIdsByRadioChannelId[channelId] ?? [];
     const listenedCandidate = candidates.find((id) => channelListening[id]);
     if (listenedCandidate) return listenedCandidate;
-    return candidates[0] ?? zoneChannelIdByRadioChannelId[channelId] ?? channelId;
+    return (
+      candidates[0] ?? zoneChannelIdByRadioChannelId[channelId] ?? channelId
+    );
   };
 
   const isListeningChannelId = (channelId: string) => {
@@ -582,9 +655,12 @@ export default function CommunityConsole() {
     if (!communityId) return;
     const base = normalizeSettings(settings);
     const communities = [...(base.keybinds?.ptt?.communities ?? [])];
-    const existingIndex = communities.findIndex((entry: any) => entry.id === communityId);
+    const existingIndex = communities.findIndex(
+      (entry: any) => entry.id === communityId,
+    );
     const normalizedBindings = { ...pttBindings, id: communityId };
-    if (existingIndex >= 0) communities[existingIndex] = normalizedBindings as any;
+    if (existingIndex >= 0)
+      communities[existingIndex] = normalizedBindings as any;
     else communities.push(normalizedBindings as any);
 
     const next: AppSettings = {
@@ -627,7 +703,11 @@ export default function CommunityConsole() {
     micStreamRef.current = null;
   };
 
-  const setChannelsState = (ids: string[], key: "tx" | "rx", value: boolean) => {
+  const setChannelsState = (
+    ids: string[],
+    key: "tx" | "rx",
+    value: boolean,
+  ) => {
     const setter = key === "tx" ? setChannelTransmitting : setChannelReceiving;
     setter((prev) => {
       const next = { ...prev };
@@ -638,8 +718,13 @@ export default function CommunityConsole() {
     });
   };
 
-  const setToneChannelsState = (ids: string[], key: "tx" | "rx", value: boolean) => {
-    const setter = key === "tx" ? setChannelToneTransmitting : setChannelToneReceiving;
+  const setToneChannelsState = (
+    ids: string[],
+    key: "tx" | "rx",
+    value: boolean,
+  ) => {
+    const setter =
+      key === "tx" ? setChannelToneTransmitting : setChannelToneReceiving;
     setter((prev) => {
       const next = { ...prev };
       ids.forEach((id) => {
@@ -649,57 +734,67 @@ export default function CommunityConsole() {
     });
   };
 
-  const transmitPtt = useCallback(async (
-    active: boolean,
-    channelIds = listenedChannelIds,
-    indicatorLabel?: string,
-    playHotCue = false,
-  ) => {
-    if (!communityId) {
-      console.warn("Cannot transmit PTT - no community ID");
-      return;
-    }
-    if (active && channelIds.length === 0) {
-      toast("No channels selected for transmission.", { type: "warning" });
-      return;
-    }
-    // if (!communityId || channelIds.length === 0) return;
-    const normalizedChannelIds = Array.from(new Set(channelIds.map((id) => normalizeToZoneChannelId(id))));
-    if (active) {
-      await ensureMicStream();
-      if (playHotCue) {
-        playPttIndicatorTone("start");
-        hotCuePendingRef.current = true;
+  const transmitPtt = useCallback(
+    async (
+      active: boolean,
+      channelIds = listenedChannelIds,
+      indicatorLabel?: string,
+      playHotCue = false,
+    ) => {
+      if (!communityId) {
+        console.warn("Cannot transmit PTT - no community ID");
+        return;
       }
-    } else {
-      stopMicStream();
-      hotCuePendingRef.current = false;
-    }
+      if (active && channelIds.length === 0) {
+        toast("No channels selected for transmission.", { type: "warning" });
+        return;
+      }
+      // if (!communityId || channelIds.length === 0) return;
+      const normalizedChannelIds = Array.from(
+        new Set(channelIds.map((id) => normalizeToZoneChannelId(id))),
+      );
+      if (active) {
+        await ensureMicStream();
+        if (playHotCue) {
+          playPttIndicatorTone("start");
+          hotCuePendingRef.current = true;
+        }
+      } else {
+        stopMicStream();
+        hotCuePendingRef.current = false;
+      }
 
-    setLocalPttActive(active);
-    activePttChannelsRef.current = active ? normalizedChannelIds : [];
-    if (!active) {
-      setActivePttIndicator(null);
-    } else {
-      setActivePttIndicator(indicatorLabel ?? (normalizedChannelIds.length === 1 ? normalizedChannelIds[0] : "ACTIVE"));
-    }
-    setChannelsState(normalizedChannelIds, "tx", active);
-    setChannelLastSrc((prev) => {
-      const next = { ...prev };
-      normalizedChannelIds.forEach((id) => {
-        next[id] = active ? "You" : next[id] ?? "You";
+      setLocalPttActive(active);
+      activePttChannelsRef.current = active ? normalizedChannelIds : [];
+      if (!active) {
+        setActivePttIndicator(null);
+      } else {
+        setActivePttIndicator(
+          indicatorLabel ??
+            (normalizedChannelIds.length === 1
+              ? normalizedChannelIds[0]
+              : "ACTIVE"),
+        );
+      }
+      setChannelsState(normalizedChannelIds, "tx", active);
+      setChannelLastSrc((prev) => {
+        const next = { ...prev };
+        normalizedChannelIds.forEach((id) => {
+          next[id] = active ? "You" : (next[id] ?? "You");
+        });
+        return next;
       });
-      return next;
-    });
 
-    socket?.emit("dispatch:ptt", {
-      communityId,
-      channelIds: normalizedChannelIds,
-      active,
-      source: "You",
-      timestamp: Date.now(),
-    });
-  }, [communityId, listenedChannelIds, normalizeToZoneChannelId, socket]);
+      socket?.emit("dispatch:ptt", {
+        communityId,
+        channelIds: normalizedChannelIds,
+        active,
+        source: "You",
+        timestamp: Date.now(),
+      });
+    },
+    [communityId, listenedChannelIds, normalizeToZoneChannelId, socket],
+  );
 
   const playTones = async (
     tones: TonePacket[],
@@ -707,7 +802,8 @@ export default function CommunityConsole() {
     onToneFinished?: (tone: TonePacket) => void,
   ) => {
     if (tones.length === 0) return;
-    const targetChannel = channelIds.find((id) => channelListening[id]) ?? channelIds[0];
+    const targetChannel =
+      channelIds.find((id) => channelListening[id]) ?? channelIds[0];
     const volume = volumes[targetChannel] ?? 50;
     const volumeDb = volumeToDb(volume);
 
@@ -737,9 +833,13 @@ export default function CommunityConsole() {
 
   const transmitTonePackets = async (tones: TonePacket[]) => {
     if (!communityId || tones.length === 0) return;
-    const channels = listenedChannelIds.filter((id) => channelPageState[id] === true);
+    const channels = listenedChannelIds.filter(
+      (id) => channelPageState[id] === true,
+    );
     if (channels.length === 0) {
-      toast("No active page-state channels selected for tone transmit.", { type: "warning" });
+      toast("No active page-state channels selected for tone transmit.", {
+        type: "warning",
+      });
       return;
     }
 
@@ -780,12 +880,17 @@ export default function CommunityConsole() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const res = await axios.get(`${link("prod")}/api/communities/${communityId}`, {
-          withCredentials: true,
-        });
+        const res = await axios.get(
+          `${link("prod")}/api/communities/${communityId}`,
+          {
+            withCredentials: true,
+          },
+        );
         setCommunity(res.data.community);
 
-        const loaded = normalizeSettings((await window.api.settings.get()) ?? null);
+        const loaded = normalizeSettings(
+          (await window.api.settings.get()) ?? null,
+        );
         setSettings(loaded);
         setConsoleSettings(getCommunityConsoleSettings(loaded, communityId));
         setCommunityPttBindings(getCommunityPttBindings(loaded, communityId));
@@ -812,12 +917,19 @@ export default function CommunityConsole() {
   useEffect(() => {
     if (!socket || !communityId) return;
 
+    
     socket.emit("dispatch:join", { communityId, source: "Dispatch Console" });
 
-    const onPtt = (event: { channelIds: string[]; active: boolean; source?: string; }) => {
+    const onPtt = (event: {
+      channelIds: string[];
+      active: boolean;
+      source?: string;
+    }) => {
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
-      const normalizedIds = Array.from(new Set(ids.map((id) => normalizeToZoneChannelId(id))));
+      const normalizedIds = Array.from(
+        new Set(ids.map((id) => normalizeToZoneChannelId(id))),
+      );
 
       setChannelsState(normalizedIds, "rx", event.active);
       setChannelLastSrc((prev) => {
@@ -836,7 +948,9 @@ export default function CommunityConsole() {
     }) => {
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
-      const normalizedIds = Array.from(new Set(ids.map((id) => normalizeToZoneChannelId(id))));
+      const normalizedIds = Array.from(
+        new Set(ids.map((id) => normalizeToZoneChannelId(id))),
+      );
 
       setChannelLastSrc((prev) => {
         const next = { ...prev };
@@ -846,7 +960,9 @@ export default function CommunityConsole() {
         return next;
       });
 
-      const localChannels = normalizedIds.filter((id) => isListeningChannelId(id));
+      const localChannels = normalizedIds.filter((id) =>
+        isListeningChannelId(id),
+      );
       if (localChannels.length > 0) {
         setToneChannelsState(localChannels, "rx", true);
         await playTones(event.tones ?? [], localChannels);
@@ -856,7 +972,10 @@ export default function CommunityConsole() {
 
     const onLastSrc = (event: { channelId?: string; source?: string }) => {
       if (!event?.channelId) return;
-      setChannelLastSrc((prev) => ({ ...prev, [event.channelId as string]: event.source || "Unknown" }));
+      setChannelLastSrc((prev) => ({
+        ...prev,
+        [event.channelId as string]: event.source || "Unknown",
+      }));
     };
 
     const onPttStatus = (event: {
@@ -867,18 +986,26 @@ export default function CommunityConsole() {
     }) => {
       const ids = event.channelIds ?? [];
       if (event.status === "granted") {
+        initIncomingAudio();
         if (hotCuePendingRef.current) {
           hotCuePendingRef.current = false;
         } else {
           playPttIndicatorTone("start");
         }
         console.log(`[PTT] Transmit granted for channels ${ids.join(", ")}`);
-        void startVoiceCapture(ids.length > 0 ? ids : activePttChannelsRef.current);
+        void startVoiceCapture(
+          ids.length > 0 ? ids : activePttChannelsRef.current,
+        );
         return;
       }
       if (event.status === "ended") {
         playPttIndicatorTone("end");
-        if (ids.length > 0) setChannelsState(ids.map((id) => normalizeToZoneChannelId(id)), "tx", false);
+        if (ids.length > 0)
+          setChannelsState(
+            ids.map((id) => normalizeToZoneChannelId(id)),
+            "tx",
+            false,
+          );
         stopVoiceCapture();
         return;
       }
@@ -889,15 +1016,23 @@ export default function CommunityConsole() {
         stopMicStream();
         stopVoiceCapture();
         const denyIds = ids.length > 0 ? ids : activePttChannelsRef.current;
-        if (denyIds.length > 0) setChannelsState(denyIds.map((id) => normalizeToZoneChannelId(id)), "tx", false);
+        if (denyIds.length > 0)
+          setChannelsState(
+            denyIds.map((id) => normalizeToZoneChannelId(id)),
+            "tx",
+            false,
+          );
         activePttChannelsRef.current = [];
         const busySummary =
           event.busyBy && event.busyBy.length > 0
             ? event.busyBy.map((b) => `${b.channelId} (${b.source})`).join(", ")
             : (event.busyChannelIds ?? []).join(", ");
-        toast(`PTT denied: channel busy${busySummary ? ` - ${busySummary}` : ""}.`, {
-          type: "warning",
-        });
+        toast(
+          `PTT denied: channel busy${busySummary ? ` - ${busySummary}` : ""}.`,
+          {
+            type: "warning",
+          },
+        );
       }
     };
 
@@ -909,12 +1044,14 @@ export default function CommunityConsole() {
     }) => {
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
-      const normalizedIds = Array.from(new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))));
-      enqueueIncomingVoiceChunk(
-        event.chunkBase64,
-        event.mimeType || "audio/webm;codecs=opus",
-        normalizedIds,
-      );
+      const listeningChannelIds = Object.entries(channelListening)
+        .filter(([, listening]) => listening)
+        .map(([id]) => id);
+        playIncomingChunk(
+          event.chunkBase64,
+          event.mimeType || "audio/webm;codecs=opus",
+          listeningChannelIds,
+        );
     };
 
     socket.on("dispatch:ptt", onPtt);
@@ -943,6 +1080,87 @@ export default function CommunityConsole() {
     consoleSettings.inputDeviceId,
     consoleSettings.outputDeviceId,
   ]);
+
+  const incomingAudioCtxRef = useRef<AudioContext | null>(null);
+  const incomingNextPlayTimeRef = useRef<number>(0);
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+  const sourceBufferRef = useRef<SourceBuffer | null>(null);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  const pendingChunksRef = useRef<Uint8Array[]>([]);
+
+  const initIncomingAudio = () => {
+    if (audioElementRef.current) return;
+
+    const audio = new Audio();
+    audio.autoplay = true;
+    audio.muted = false;
+
+    audioElementRef.current = audio;
+
+    const mediaSource = new MediaSource();
+    mediaSourceRef.current = mediaSource;
+
+    audio.src = URL.createObjectURL(mediaSource);
+
+    mediaSource.addEventListener("sourceopen", () => {
+      const sb = mediaSource.addSourceBuffer(
+        'audio/webm; codecs="opus"'
+      );
+      sb.mode = "sequence";
+      sourceBufferRef.current = sb;
+
+      // Flush queued chunks
+      pendingChunksRef.current.forEach((chunk) => {
+        // Create a copy with a fresh ArrayBuffer to avoid SharedArrayBuffer compatibility issues
+        const safeBuf = new Uint8Array(new ArrayBuffer(chunk.length));
+        safeBuf.set(chunk);
+        sb.appendBuffer(safeBuf);
+      });
+      pendingChunksRef.current = [];
+    });
+
+    // 🔥 Force playback start (important)
+    audio.play().catch(() => {});
+  };
+
+  const playIncomingChunk = (
+    chunkBase64: string,
+    mimeType: string,
+    channelIds: string[],
+  ) => {
+    if (!Array.isArray(channelIds)) return;
+
+    const listened = channelIds.filter((id) => channelListening[id]);
+    if (listened.length === 0) return;
+
+    const binary = atob(chunkBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    // Create a copy with a fresh ArrayBuffer to avoid SharedArrayBuffer compatibility issues
+    const safeBuf = new Uint8Array(new ArrayBuffer(bytes.length));
+    safeBuf.set(bytes);
+
+    const sb = sourceBufferRef.current;
+
+    if (!sb) {
+      pendingChunksRef.current.push(safeBuf);
+      return;
+    }
+
+    if (sb.updating) {
+      sb.addEventListener(
+        "updateend",
+        () => sb.appendBuffer(safeBuf),
+        { once: true }
+      );
+    } else {
+      sb.appendBuffer(safeBuf);
+    }
+  };
 
   useEffect(() => {
     const audioEl = rxMonitorAudioRef.current as any;
@@ -978,7 +1196,10 @@ export default function CommunityConsole() {
 
     setPositions((prev) => {
       const updated = { ...prev };
-      const width = Math.max(canvasRef.current!.offsetWidth, CARD_WIDTH + CARD_SPACING * 2);
+      const width = Math.max(
+        canvasRef.current!.offsetWidth,
+        CARD_WIDTH + CARD_SPACING * 2,
+      );
       const stepX = CARD_WIDTH + CARD_SPACING;
       const stepY = CARD_HEIGHT + CARD_SPACING;
       const columns = Math.max(1, Math.floor((width - CARD_SPACING) / stepX));
@@ -990,10 +1211,16 @@ export default function CommunityConsole() {
         while (true) {
           const col = nextSlotIndex % columns;
           const row = Math.floor(nextSlotIndex / columns);
-          const candidate = { x: CARD_SPACING + col * stepX, y: CARD_SPACING + row * stepY };
+          const candidate = {
+            x: CARD_SPACING + col * stepX,
+            y: CARD_SPACING + row * stepY,
+          };
           nextSlotIndex += 1;
           const occupied = Object.entries(updated).some(
-            ([itemId, p]) => activeZoneItemIds.has(itemId) && p.x === candidate.x && p.y === candidate.y,
+            ([itemId, p]) =>
+              activeZoneItemIds.has(itemId) &&
+              p.x === candidate.x &&
+              p.y === candidate.y,
           );
           if (!occupied) {
             updated[id] = candidate;
@@ -1005,7 +1232,9 @@ export default function CommunityConsole() {
       activeZone.channels.forEach((c) => getNextOpenPos(c.id));
       activeZone.toneSets?.forEach((t) => getNextOpenPos(t.id));
 
-      const lowest = Math.max(...Object.values(updated).map((p) => p.y + CARD_HEIGHT)) + CARD_SPACING;
+      const lowest =
+        Math.max(...Object.values(updated).map((p) => p.y + CARD_HEIGHT)) +
+        CARD_SPACING;
       setCanvasHeight(Math.max(lowest, MIN_CANVAS_HEIGHT));
 
       return updated;
@@ -1062,7 +1291,10 @@ export default function CommunityConsole() {
 
     snapTargets.forEach((target) => {
       const clamped = clampToCanvas(target.x, target.y);
-      const distance = Math.hypot(candidate.x - clamped.x, candidate.y - clamped.y);
+      const distance = Math.hypot(
+        candidate.x - clamped.x,
+        candidate.y - clamped.y,
+      );
       if (distance > SNAP_DISTANCE) return;
       if (hasMinGapCollision(clamped, movingId, all)) return;
       if (distance < bestDistance) {
@@ -1083,7 +1315,10 @@ export default function CommunityConsole() {
     const id = event.active.id as string;
     const start = dragStartPos.current[id];
     if (!start) return;
-    const next = clampToCanvas(start.x + event.delta.x, start.y + event.delta.y);
+    const next = clampToCanvas(
+      start.x + event.delta.x,
+      start.y + event.delta.y,
+    );
     setPositions((prev) => {
       const snapped = getSnappedPosition(id, next, prev);
       return { ...prev, [id]: snapped };
@@ -1106,11 +1341,16 @@ export default function CommunityConsole() {
 
     if (isTone) {
       const tone = placements.tones.find((t: any) => t.id === id);
-      if (!tone) placements.tones.push({ id, pos: serializePosition(finalPos) } as any);
+      if (!tone)
+        placements.tones.push({ id, pos: serializePosition(finalPos) } as any);
       else tone.pos = serializePosition(finalPos);
     } else {
       const ch = placements.channels.find((c: any) => c.id === id);
-      if (!ch) placements.channels.push({ id, pos: serializePosition(finalPos) } as any);
+      if (!ch)
+        placements.channels.push({
+          id,
+          pos: serializePosition(finalPos),
+        } as any);
       else ch.pos = serializePosition(finalPos);
     }
 
@@ -1122,7 +1362,9 @@ export default function CommunityConsole() {
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      setZuluTime(now.toLocaleTimeString("en-US", { hour12: false, timeZone: "UTC" }));
+      setZuluTime(
+        now.toLocaleTimeString("en-US", { hour12: false, timeZone: "UTC" }),
+      );
     };
     updateTime();
     const interval = setInterval(updateTime, 1000);
@@ -1171,13 +1413,18 @@ export default function CommunityConsole() {
           </div>
         ) : null}
 
-        <Tab.Group selectedIndex={activeZoneIndex} onChange={setActiveZoneIndex}>
+        <Tab.Group
+          selectedIndex={activeZoneIndex}
+          onChange={setActiveZoneIndex}
+        >
           <Tab.List className="z-10 fixed top-12 w-full flex bg-[#0C1524] border-b border-gray-700">
             {sortedZones.map((zone) => (
               <Tab
                 key={zone.id}
                 className={({ selected }) =>
-                  selected ? "bg-[#3C83F6]/30 px-4 py-2" : "hover:bg-[#3C83F6]/20 px-4 py-2"
+                  selected
+                    ? "bg-[#3C83F6]/30 px-4 py-2"
+                    : "hover:bg-[#3C83F6]/20 px-4 py-2"
                 }
               >
                 {zone.name}
@@ -1193,7 +1440,6 @@ export default function CommunityConsole() {
                   className="relative w-full h-fit"
                   style={{ height: canvasHeight }}
                 >
-
                   <DndContext
                     sensors={sensors}
                     onDragStart={handleDragStart}
@@ -1223,12 +1469,19 @@ export default function CommunityConsole() {
                                 : "border-[#2A3145]";
 
                       return (
-                        <DraggableItem drag={editMode} key={ch.id} id={ch.id} pos={pos}>
+                        <DraggableItem
+                          drag={editMode}
+                          key={ch.id}
+                          id={ch.id}
+                          pos={pos}
+                        >
                           <DragCard
                             className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border flex flex-col ${stateClass}`}
                             onClick={(e) => {
+                              initIncomingAudio();
                               const target = e.target as HTMLElement;
-                              if (target.closest("[data-interactive='true']")) return;
+                              if (target.closest("[data-interactive='true']"))
+                                return;
                               toggleListening(ch.id);
                             }}
                           >
@@ -1236,41 +1489,57 @@ export default function CommunityConsole() {
                               <button
                                 id="instantptt"
                                 data-interactive="true"
-                                className={`p-2 rounded-lg ${!channelChildrenEnabled
+                                className={`p-2 rounded-lg ${
+                                  !channelChildrenEnabled
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : tx
                                       ? "bg-red-500/80"
                                       : listening
                                         ? "bg-[#3C83F61A] border border-[#3C83F61A]"
                                         : "bg-[#9CA3AF]"
-                                  }`}
+                                }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  void transmitPtt(true, [ch.id], ch.channel.name);
+                                  void transmitPtt(
+                                    true,
+                                    [ch.id],
+                                    ch.channel.name,
+                                  );
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                                 onPointerUp={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  void transmitPtt(false, [ch.id], ch.channel.name);
+                                  void transmitPtt(
+                                    false,
+                                    [ch.id],
+                                    ch.channel.name,
+                                  );
                                 }}
                                 onPointerCancel={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  void transmitPtt(false, [ch.id], ch.channel.name);
+                                  void transmitPtt(
+                                    false,
+                                    [ch.id],
+                                    ch.channel.name,
+                                  );
                                 }}
                               >
                                 <img width={48} height={48} src={InstantPTT} />
                               </button>
                               <div className="flex flex-col gap-0.5">
-                                <span className="text-md text-[#D1D5DB]">{ch.channel.name}</span>
+                                <span className="text-md text-[#D1D5DB]">
+                                  {ch.channel.name}
+                                </span>
                                 <span className="text-xs text-[#9CA3AF]">
                                   Last SRC: {channelLastSrc[ch.id] ?? "None"}
                                 </span>
                                 <span
-                                  className={`text-xs ${tx
+                                  className={`text-xs ${
+                                    tx
                                       ? "text-red-400"
                                       : toneTx
                                         ? "text-orange-300"
@@ -1281,7 +1550,7 @@ export default function CommunityConsole() {
                                             : listening
                                               ? "text-[#3C83F6]"
                                               : "text-[#6B7280]"
-                                    }`}
+                                  }`}
                                 >
                                   State:{" "}
                                   {tx
@@ -1302,8 +1571,11 @@ export default function CommunityConsole() {
                             <div className="flex flex-row gap-2">
                               <div
                                 data-interactive="true"
-                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${channelChildrenEnabled ? "bg-[#9CA3AF]" : "bg-[#6B7280]/70"
-                                  }`}
+                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${
+                                  channelChildrenEnabled
+                                    ? "bg-[#9CA3AF]"
+                                    : "bg-[#6B7280]/70"
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -1315,7 +1587,10 @@ export default function CommunityConsole() {
                                   value={volume}
                                   disabled={!channelChildrenEnabled}
                                   onChange={(e) =>
-                                    setVolumes((prev) => ({ ...prev, [ch.id]: Number(e.target.value) }))
+                                    setVolumes((prev) => ({
+                                      ...prev,
+                                      [ch.id]: Number(e.target.value),
+                                    }))
                                   }
                                   className="w-full appearance-none bg-transparent cursor-pointer [&::-webkit-slider-runnable-track]:h-2 [&::-webkit-slider-runnable-track]:bg-[#2A3145] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:rounded-md [&::-webkit-slider-thumb]:bg-[#1F2434] [&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-[#2A3145] [&::-webkit-slider-thumb]:-mt-2"
                                 />
@@ -1323,31 +1598,41 @@ export default function CommunityConsole() {
 
                               <button
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
+                                  !channelChildrenEnabled
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : pageState
                                       ? "bg-amber-500/70"
                                       : "bg-[#9CA3AF]"
-                                  }`}
+                                }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  setChannelPageState((prev) => ({ ...prev, [ch.id]: !prev[ch.id] }));
+                                  setChannelPageState((prev) => ({
+                                    ...prev,
+                                    [ch.id]: !prev[ch.id],
+                                  }));
                                 }}
                               >
-                                <img width={45} height={45} src={PageSelect} className="mt-1.25" />
+                                <img
+                                  width={45}
+                                  height={45}
+                                  src={PageSelect}
+                                  className="mt-1.25"
+                                />
                               </button>
 
                               <button
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
+                                  !channelChildrenEnabled
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : listening
                                       ? "bg-[#3C83F61A] border border-[#3C83F61A]"
                                       : "bg-[#9CA3AF]"
-                                  }`}
+                                }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
@@ -1356,7 +1641,11 @@ export default function CommunityConsole() {
                                   toggleListening(ch.id);
                                 }}
                               >
-                                <img width={45} height={45} src={ChannelMarker} />
+                                <img
+                                  width={45}
+                                  height={45}
+                                  src={ChannelMarker}
+                                />
                               </button>
                             </div>
                           </DragCard>
@@ -1369,59 +1658,92 @@ export default function CommunityConsole() {
                       const queued = toneQueue.includes(t.id);
 
                       return (
-                        <DraggableItem key={t.id} id={t.id} pos={pos} drag={editMode}>
+                        <DraggableItem
+                          key={t.id}
+                          id={t.id}
+                          pos={pos}
+                          drag={editMode}
+                        >
                           <DragCard
-                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${queued
+                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${
+                              queued
                                 ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
                                 : "border-[#2A3145]"
-                              }`}
+                            }`}
                           >
                             <h1>{t.toneSet.name}</h1>
                             <small className="text-[#9CA3AF]">
-                              A: {t.toneSet.toneAFrequencyHz} HZ | B: {t.toneSet.toneBFrequencyHz} HZ
+                              A: {t.toneSet.toneAFrequencyHz} HZ | B:{" "}
+                              {t.toneSet.toneBFrequencyHz} HZ
                             </small>
                             <div className="flex flex-row gap-3 py-2 justify-end">
                               <button
                                 id="toneplay"
                                 disabled={tonePlaybackBusy}
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${tonePlaybackBusy
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${
+                                  tonePlaybackBusy
                                     ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
                                     : "bg-[#2A3145] active:bg-[#3C83F6]/40"
-                                  }`}
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={async (e) => {
                                   if (tonePlaybackBusy) return;
                                   e.stopPropagation();
                                   const source =
                                     toneQueue.length > 0
-                                      ? zone.toneSets?.filter((entry) => toneQueue.includes(entry.id)) ?? []
+                                      ? (zone.toneSets?.filter((entry) =>
+                                          toneQueue.includes(entry.id),
+                                        ) ?? [])
                                       : [t];
-                                  const packets: TonePacket[] = source.map((entry) => ({
-                                    id: entry.id,
-                                    name: entry.toneSet.name,
-                                    toneAHz: Number(entry.toneSet.toneAFrequencyHz),
-                                    toneBHz: Number(entry.toneSet.toneBFrequencyHz),
-                                    durationA: (entry.toneSet.toneADurationMs ?? 1000) / 1000,
-                                    durationB: (entry.toneSet.toneBDurationMs ?? 3000) / 1000,
-                                  }));
+                                  const packets: TonePacket[] = source.map(
+                                    (entry) => ({
+                                      id: entry.id,
+                                      name: entry.toneSet.name,
+                                      toneAHz: Number(
+                                        entry.toneSet.toneAFrequencyHz,
+                                      ),
+                                      toneBHz: Number(
+                                        entry.toneSet.toneBFrequencyHz,
+                                      ),
+                                      durationA:
+                                        (entry.toneSet.toneADurationMs ??
+                                          1000) / 1000,
+                                      durationB:
+                                        (entry.toneSet.toneBDurationMs ??
+                                          3000) / 1000,
+                                    }),
+                                  );
                                   await transmitTonePackets(packets);
                                 }}
                               >
-                                <img width={36} height={36} src="/assets/imgs/pager.png" />
+                                <img
+                                  width={36}
+                                  height={36}
+                                  src="/assets/imgs/pager.png"
+                                />
                               </button>
                               <button
                                 id="toneselect"
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${queued
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${
+                                  queued
                                     ? "bg-amber-500/70 ring-2 ring-amber-300"
                                     : "bg-[#2A3145] hover:bg-[#38425c]"
-                                  }`}
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setToneQueue((prev) => (prev.includes(t.id) ? prev : [...prev, t.id]));
+                                  setToneQueue((prev) =>
+                                    prev.includes(t.id)
+                                      ? prev
+                                      : [...prev, t.id],
+                                  );
                                 }}
                               >
-                                <img width={36} height={36} src="/assets/imgs/dualpage.png" />
+                                <img
+                                  width={36}
+                                  height={36}
+                                  src="/assets/imgs/dualpage.png"
+                                />
                               </button>
                             </div>
                           </DragCard>
@@ -1442,16 +1764,24 @@ export default function CommunityConsole() {
         value={consoleSettings}
         pttBindings={communityPttBindings}
         txAudio={settings?.txAudio!}
-        channelOptions={
-          sortedZones.flatMap((zone) =>
-            zone.channels.map((ch) => ({
-              id: ch.id,
-              label: `${zone.name} - ${ch.channel?.name ?? ch.channelId ?? ch.id}`,
-            })),
-          )
+        channelOptions={sortedZones.flatMap((zone) =>
+          zone.channels.map((ch) => ({
+            id: ch.id,
+            label: `${zone.name} - ${ch.channel?.name ?? ch.channelId ?? ch.id}`,
+          })),
+        )}
+        onTxStartAudioChange={(v) =>
+          setSettings((prev) => ({
+            ...prev!,
+            txAudio: { playStart: v!, playEnd: prev?.txAudio?.playEnd! },
+          }))
         }
-        onTxStartAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: v!, playEnd: prev?.txAudio?.playEnd! } }))}
-        onTxEndAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: { playStart: prev?.txAudio?.playStart!, playEnd: v! } }))}
+        onTxEndAudioChange={(v) =>
+          setSettings((prev) => ({
+            ...prev!,
+            txAudio: { playStart: prev?.txAudio?.playStart!, playEnd: v! },
+          }))
+        }
         editMode={editMode}
         onEditModeChange={setEditMode}
         onSave={updateConsoleSettings}
