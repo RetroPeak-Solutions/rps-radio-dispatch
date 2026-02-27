@@ -1,7 +1,7 @@
 // app/components/LoadingOverlay.tsx
 import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLoading } from "../../context/Loading";
+import { useLoading } from "@context/Loading";
 
 export const LoadingOverlay: React.FC = () => {
   const { isLoading } = useLoading();

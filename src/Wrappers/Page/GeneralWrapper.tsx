@@ -1,10 +1,7 @@
 import React from "react";
-import { useEffect, useState, type ReactNode } from "react";
-import { NavLink, useNavigate } from "react-router";
-import { Radio, LayoutDashboard, House, LogOut, Shield, UserCog } from "lucide-react";
-import PageWrapper from "./index";
-import { Button } from "../../components/UI/Button";
-import Navbar from "../../components/Navbar";
+import type { ReactNode } from "react";
+import PageWrapper from "@wrappers/Page/index";
+import Navbar from "@components/Navbar";
 
 type GeneralPageWrapperProps = {
   children: ReactNode;

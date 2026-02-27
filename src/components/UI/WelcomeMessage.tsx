@@ -1,6 +1,6 @@
 // app/components/WelcomeMessage.tsx
 import React from "react";
-import type { User } from "../../lib/types";
+import type { User } from "@lib/types";
 
 interface WelcomeMessageProps {
   user?: Pick<User, "firstName" | "lastName"> & Partial<Omit<User, "firstName" | "lastName">> | null;

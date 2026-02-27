@@ -3,13 +3,8 @@ import axios from "axios";
 import { useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import { Mail, Loader2, CheckCircle, XCircle, Shield, Users } from "lucide-react";
-import "../../Layouts/Auth/autofill.css";
-import ErrorFallback from "../../Wrappers/Error/ErrorFallback";
-import { AuthForgotPassword, AuthUser } from "../../utils/link";
-
-export function ErrorBoundary() {
-  return <ErrorFallback />;
-}
+import "@layouts/Auth/autofill.css";
+import { AuthForgotPassword, AuthUser } from "@utils/link";
 
 export default function ForgotPassword() {
   const navigate = useNavigate();

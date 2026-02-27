@@ -1,4 +1,4 @@
-import { useToast, type ToastType } from "../../context/ToastProvider";
+import { useToast, type ToastType } from "@context/ToastProvider";
 
 type colors = "yellow" | "blue" | "purple" | "green" | "red" | "orange" | "white";
 

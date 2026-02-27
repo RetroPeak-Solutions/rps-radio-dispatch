@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef } from "react";
-import playQuickCall2 from "../utils/playQC2Tone";
+import playQuickCall2 from "@utils/playQC2Tone";
 
 
 type ToneQueueItem = {

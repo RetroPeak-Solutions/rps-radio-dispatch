@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import type { ErrorInfo } from "react";
-import ErrorFallback from "./ErrorFallback";
-import AuthPageWrapper from "../Page/AuthPageWrapper";
+import ErrorFallback from "@wrappers/Error/ErrorFallback";
+import AuthPageWrapper from "@wrappers/Page/AuthPageWrapper";
 
 interface Props {
   children: React.ReactNode;

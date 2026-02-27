@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router";
 import { useState, useEffect } from "react";
-import { ERROR_CODES } from "./errCodes";
 import { Copy } from "lucide-react";
-import "./scrollbar.css"
+import { ERROR_CODES } from "@wrappers/Error/errCodes";
+import "@wrappers/Error/scrollbar.css"
 
 interface ErrorFallbackProps {
   error: unknown;

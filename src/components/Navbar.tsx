@@ -2,18 +2,15 @@ import React from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import {
   Radio,
-  LayoutDashboard,
-  House,
   LogOut,
-  UserCog,
   Settings,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Button } from "./UI/Button";
-import { AuthUser, AuthLogout } from "../utils/link";
+import { Button } from "@components/UI/Button";
+import { AuthUser, AuthLogout } from "@utils/link";
 import axios from "axios";
-import { useLoading } from "../context/Loading";
-import { SettingsDialog } from "./SettingsDialog";
+import { useLoading } from "@context/Loading";
+import { SettingsDialog } from "@components/SettingsDialog";
 
 export default function Navbar() {
   const { setLoading } = useLoading();

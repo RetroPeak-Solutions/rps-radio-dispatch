@@ -1,12 +1,8 @@
 import React from "react";
 import { Outlet, type MetaFunction } from "react-router";
-import ErrorFallback from "../../Wrappers/Error/ErrorFallback";
-import AuthPageWrapper from '../../Wrappers/Page/AuthPageWrapper';
-import { LoadingOverlay } from "../../components/UI/LoadingOverlay";
+import AuthPageWrapper from '@wrappers/Page/AuthPageWrapper';
+import { LoadingOverlay } from "@components/UI/LoadingOverlay";
 
-export function ErrorBoundary() {
-  return <ErrorFallback />;
-}
 
 export default function AuthLayoutRoute() {
   return (

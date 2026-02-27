@@ -1,17 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { useLoading } from "../context/Loading";
+import { useLoading } from "@context/Loading";
 import { useNavigate } from "react-router";
-import getSessionUser from "../utils/getSessionUser";
-import { WelcomeMessage } from "../components/UI/WelcomeMessage";
-import type { User } from "../lib/types";
+import getSessionUser from "@utils/getSessionUser";
+import type { User } from "@lib/types";
 import axios from "axios";
-import link from "../utils/link";
-import { Button } from "../components/UI/Button";
-import { ChevronRight, Plus, Search, Users } from "lucide-react";
-import AuthStyledInput from "../components/UI/AuthStyledInput";
-import ModernCard from "../components/UI/ModernCard";
-import { AnimatedDropdownWithIcon } from "../components/UI/IconDropdown";
-import { Dialog } from "../components/UI/Dialog";
+import link from "@utils/link";
+import { Button } from "@components/UI/Button";
+import { ChevronRight, Search } from "lucide-react";
+import AuthStyledInput from "@components/UI/AuthStyledInput";
+import ModernCard from "@components/UI/ModernCard";
 
 export default function DashboardPage() {
     const { setLoading } = useLoading();

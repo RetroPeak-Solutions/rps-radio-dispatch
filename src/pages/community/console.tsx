@@ -13,18 +13,18 @@ import {
   type DragMoveEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { useLoading } from "../../context/Loading";
+import { useLoading } from "@context/Loading";
 import axios from "axios";
-import link from "../../utils/link";
+import link from "@utils/link";
 import type {
   QuickCall2ToneSet,
   RadioChannel,
   RadioZone,
-} from "../../lib/types";
-import DragCard from "../../components/UI/DragCard";
-import InstantPTT from "../../../public/assets/imgs/instantptt.png";
-import PageSelect from "../../../public/assets/imgs/pageselect.png";
-import ChannelMarker from "../../../public/assets/imgs/channelmarker.png";
+} from "@lib/types";
+import DragCard from "@components/UI/DragCard";
+import InstantPTT from "@assets/imgs/instantptt.png";
+import PageSelect from "@assets/imgs/pageselect.png";
+import ChannelMarker from "@assets/imgs/channelmarker.png";
 
 type Position = { x: string; y: string };
 

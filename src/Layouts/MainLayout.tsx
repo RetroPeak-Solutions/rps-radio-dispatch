@@ -1,7 +1,7 @@
 import React from "react";
 import { Outlet } from "react-router";
-import GeneralPageWrapper from '../Wrappers/Page/GeneralWrapper';
-import { LoadingOverlay } from "../components/UI/LoadingOverlay";
+import GeneralPageWrapper from '@wrappers/Page/GeneralWrapper';
+import { LoadingOverlay } from "@components/UI/LoadingOverlay";
 
 function MainLayouts() {
   return (

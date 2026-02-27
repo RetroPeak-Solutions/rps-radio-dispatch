@@ -4,14 +4,10 @@ import axios from "axios";
 import { useNavigate } from "react-router";
 import { motion } from "framer-motion";
 import { Shield, Users, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import "../../Layouts/Auth/autofill.css";
-import ErrorFallback from "../../Wrappers/Error/ErrorFallback";
-import { AuthLogin, AuthUser } from "../../utils/link";
-import { useLoading } from "../../context/Loading";
+import "@layouts/Auth/autofill.css";
+import { AuthLogin, AuthUser } from "@utils/link";
+import { useLoading } from "@context/Loading";
 
-export function ErrorBoundary() {
-  return <ErrorFallback />;
-}
 
 export default function FuturisticLogin() {
   const { setLoading, isLoading: loading } = useLoading();

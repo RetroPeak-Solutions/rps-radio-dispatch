@@ -40,7 +40,8 @@
       "src",
       "dist/**/*",
       "electron/**/*",
-      "public"
+      "public",
+      "tsconfig.json"
     ],
     "mac": {
       "category": "public.app-category.productivity",

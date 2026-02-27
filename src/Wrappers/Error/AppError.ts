@@ -1,4 +1,4 @@
-import { ERROR_CODES } from "./errCodes";
+import { ERROR_CODES } from "@wrappers/Error/errCodes";
 
 // utils/AppError.ts
 export class AppError extends Error {
