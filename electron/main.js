@@ -27,6 +27,10 @@ const defaultSettings = {
   autoUpdates: false,
   updateChannel: "stable",
   notifications: true,
+  txAudio: {
+    playStart: true,
+    playEnd: true
+  },
   placements: {
     channels: [],
     tones: [],

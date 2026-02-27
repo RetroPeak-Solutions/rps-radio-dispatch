@@ -27,6 +27,10 @@ type PttHotkeysOptions = {
   listenedChannelIds: string[];
   localPttActive: boolean;
   activePttChannelsRef: MutableRefObject<string[]>;
+  txAudio: {
+    playStart: boolean;
+    playEnd: boolean;
+  };
   transmitPtt: (
     active: boolean,
     channelIds?: string[],
@@ -126,6 +130,7 @@ export function useCommunityPttHotkeys({
   transmitPtt,
   setPttDebug,
   toast,
+  txAudio,
   outputDeviceId,
   debugEnabled = false,
 }: PttHotkeysOptions) {
@@ -241,7 +246,9 @@ export function useCommunityPttHotkeys({
         e.preventDefault();
         activeHotkeyComboRef.current = matched.combo;
         void transmitPtt(true, [matched.channelId], matched.channelName);
-        void playSfx(AUDIO_SFX.talkActive, 0.5, outputDeviceId);
+        if (txAudio.playStart) {
+          void playSfx(AUDIO_SFX.talkActive, 0.5, outputDeviceId);
+        }
         return;
       }
 
@@ -252,7 +259,9 @@ export function useCommunityPttHotkeys({
         e.preventDefault();
         activeHotkeyComboRef.current = globalPttCombo;
         void transmitPtt(true, listenedChannelIds, "GLOBAL", true);
-        void playSfx(AUDIO_SFX.talkActive, 0.5, outputDeviceId);
+        if (txAudio.playStart) {
+          void playSfx(AUDIO_SFX.talkActive, 0.5, outputDeviceId);
+        }
       } else if (globalPttCombo.length > 0 && comboMatches(pressedKeysRef.current, globalPttCombo) && listenedChannelIds.length === 0) {
         updateDebug(
           `global combo=[${globalPttCombo.join("+")}] listened=none action=blocked`,
@@ -273,7 +282,9 @@ export function useCommunityPttHotkeys({
         const activeChannels = activePttChannelsRef.current;
         void transmitPtt(false, activeChannels.length > 0 ? activeChannels : listenedChannelIds);
       }
-      void playSfx(AUDIO_SFX.talkEnd, 0.5, outputDeviceId);
+      if (txAudio.playEnd) {
+        void playSfx(AUDIO_SFX.talkEnd, 0.5, outputDeviceId);
+      }
     };
 
     const handleBlur = () => {

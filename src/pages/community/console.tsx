@@ -134,7 +134,7 @@ const AUDIO_SFX = {
   alert3: "/assets/audio/alert3.wav",
 } as const;
 
-export const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
+const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
     const audio = new Audio(src);
     audio.volume = volume;
     const sinkId = outputDeviceId;
@@ -274,14 +274,14 @@ export default function CommunityConsole() {
     // }
 
     if (kind === "start") {
-      void playSfx(AUDIO_SFX.talkActive, 0.85, consoleSettings.outputDeviceId);
+      // void playSfx(AUDIO_SFX.talkActive, 0.85, consoleSettings.outputDeviceId);
       // osc.frequency.setValueAtTime(900, ctx.currentTime);
       // osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.07);
       // return;
     } else if (kind === "end") {
-      void playSfx(AUDIO_SFX.talkEnd, 0.85, consoleSettings.outputDeviceId);
-      // osc.frequency.setValueAtTime(900, ctx.currentTime);
-      // osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
+      // void playSfx(AUDIO_SFX.talkEnd, 0.85, consoleSettings.outputDeviceId);
+      osc.frequency.setValueAtTime(900, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.07);
     } else {
       void playSfx(AUDIO_SFX.talkDenied, 0.9, consoleSettings.outputDeviceId);
       // osc.frequency.setValueAtTime(240, ctx.currentTime);
@@ -952,6 +952,10 @@ export default function CommunityConsole() {
     transmitPtt,
     setPttDebug,
     toast,
+    txAudio: {
+      playStart: settings?.txAudio.playStart!,
+      playEnd: settings?.txAudio.playEnd!,
+    },
     outputDeviceId: consoleSettings.outputDeviceId,
     debugEnabled: SHOW_PTT_DEBUG,
   });
@@ -1433,6 +1437,7 @@ export default function CommunityConsole() {
         onClose={() => setSettingsDialogOpen(false)}
         value={consoleSettings}
         pttBindings={communityPttBindings}
+        txAudio={settings?.txAudio!}
         channelOptions={
           sortedZones.flatMap((zone) =>
             zone.channels.map((ch) => ({
@@ -1441,6 +1446,8 @@ export default function CommunityConsole() {
             })),
           )
         }
+        onTxStartAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: {  playStart: v!, playEnd: prev?.txAudio.playEnd! }}))}
+        onTxEndAudioChange={(v) => setSettings((prev) => ({ ...prev!, txAudio: {  playStart: prev?.txAudio.playStart!, playEnd: v! }}))}
         editMode={editMode}
         onEditModeChange={setEditMode}
         onSave={updateConsoleSettings}

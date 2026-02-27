@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Dialog } from "./Dialog";
-import { Edit3 } from "lucide-react";
+import { AudioLines, Edit3, Grid2X2 } from "lucide-react";
 import { SwitchToggle } from "./SwitchToggle";
 
 export type ConsoleSettingsState = {
@@ -84,6 +84,14 @@ type Props = {
   pttBindings: CommunityPttBindings;
   channelOptions: ChannelOption[];
   editMode: boolean;
+  txAudio: {
+    playStart: boolean;
+    playEnd: boolean;
+  }
+  // playTxStartAudio: boolean;
+  // playTxEndAudio: boolean;
+  onTxStartAudioChange: (value: boolean) => void;
+  onTxEndAudioChange: (value: boolean) => void;
   onEditModeChange: (value: boolean) => void;
   onSave: (next: {
     consoleSettings: ConsoleSettingsState;
@@ -98,6 +106,9 @@ export default function CommunityConsoleSettingsDialog({
   pttBindings,
   channelOptions,
   editMode,
+  txAudio,
+  onTxStartAudioChange,
+  onTxEndAudioChange,
   onEditModeChange,
   onSave,
 }: Props) {
@@ -107,6 +118,8 @@ export default function CommunityConsoleSettingsDialog({
   const [pressedKeys, setPressedKeys] = useState<string[]>([]);
   const [inputDevices, setInputDevices] = useState<AudioOption[]>([]);
   const [outputDevices, setOutputDevices] = useState<AudioOption[]>([]);
+  // const [txStartAudio, setTxStartAudio] = useState<boolean>(playTxStartAudio ?? false);
+  // const [txEndAudio, setTxEndAudio] = useState<boolean>(playTxEndAudio ?? false);
 
   useEffect(() => {
     if (!open) return;
@@ -246,7 +259,10 @@ export default function CommunityConsoleSettingsDialog({
         </div>
 
         <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
-          <div className="font-semibold">Grid Snapping</div>
+          <div className="font-semibold flex items-center gap-2">
+            <Grid2X2 className="w-4 h-4" />
+            Grid Snapping
+          </div>
           <div className="mt-2 flex items-center justify-between gap-3">
             <span className="text-sm text-[#BFBFBF]">
               Snap near neighboring cards and enforce gap
@@ -255,6 +271,44 @@ export default function CommunityConsoleSettingsDialog({
               size="md"
               value={draft.gridSnapping}
               onChange={(checked) => setDraft((prev) => ({ ...prev, gridSnapping: checked }))}
+              activeColor="#3C83F6"
+              inactiveColor="#4b5563"
+            />
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
+          <div className="font-semibold flex items-center gap-2">
+            <AudioLines className="w-4 h-4" />
+            Tx Start Audio
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#BFBFBF]">
+              Toggle The TX (Transmit) Start Audio
+            </span>
+            <SwitchToggle
+              size="md"
+              value={txAudio?.playStart!}
+              onChange={onTxStartAudioChange}
+              activeColor="#3C83F6"
+              inactiveColor="#4b5563"
+            />
+          </div>
+        </div>
+
+        <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
+          <div className="font-semibold flex items-center gap-2">
+            <AudioLines className="w-4 h-4" />
+            Tx End Audio
+          </div>
+          <div className="mt-2 flex items-center justify-between gap-3">
+            <span className="text-sm text-[#BFBFBF]">
+              Toggle The TX (Transmit) End Audio
+            </span>
+            <SwitchToggle
+              size="md"
+              value={txAudio?.playEnd!}
+              onChange={onTxEndAudioChange}
               activeColor="#3C83F6"
               inactiveColor="#4b5563"
             />

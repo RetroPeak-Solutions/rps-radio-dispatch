@@ -12,6 +12,10 @@ declare global {
           autoUpdates?: boolean;
           updateChannel?: "stable" | "beta";
           notifications?: boolean;
+          txAudio: {
+            playStart: boolean;
+            playEnd: boolean;
+          };
           placements: {
             channels: {
               id: string;
@@ -74,6 +78,10 @@ declare global {
           autoUpdates?: boolean;
           updateChannel?: "stable" | "beta";
           notifications?: boolean;
+          txAudio: {
+            playStart: boolean;
+            playEnd: boolean;
+          };
           placements: {
             channels: {
               id: string;
