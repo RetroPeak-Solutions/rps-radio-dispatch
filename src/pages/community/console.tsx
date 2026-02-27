@@ -1359,7 +1359,7 @@ export default function CommunityConsole() {
                       return (
                         <DraggableItem key={t.id} id={t.id} pos={pos} drag={editMode}>
                           <DragCard
-                            className={`w-[300px] h-[150px] bg-gradient-to-b from-[#1F2434] to-[#151A26] border ${queued
+                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${queued
                                 ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
                                 : "border-[#2A3145]"
                               }`}
