@@ -99,3 +99,13 @@
   @apply absolute inset-0 rounded-full bg-current opacity-30;
   animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
 }
+
+/* Suppress native/Tailwind keyboard focus outlines across the Dispatch app. */
+*:focus,
+*:focus-visible {
+  outline: none !important;
+}
+
+*:focus-visible {
+  box-shadow: none !important;
+}

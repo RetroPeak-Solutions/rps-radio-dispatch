@@ -117,7 +117,7 @@ export function Layout({ children }: LayoutProps) {
 }
 
 function useSocketLink() {
-    return SocketLink("dev");
+  return SocketLink("prod");
 }
 
 /* ===========================

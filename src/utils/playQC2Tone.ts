@@ -6,6 +6,7 @@ export default async function playQuickCall2(
   durationA = 1,
   durationB = 3,
   onEnded: () => void,
+  volumeDb = -6,
 ) {
   await Tone.start();
 
@@ -24,14 +25,14 @@ export default async function playQuickCall2(
   const now = Tone.now();
 
   // ---------- Tone A ----------
-  const oscA = new Tone.Oscillator({ type: "sine", volume: -6 }).toDestination();
+  const oscA = new Tone.Oscillator({ type: "sine", volume: volumeDb }).toDestination();
   oscA.frequency.setValueAtTime(toneA, now);
   oscA.start(now);
   oscA.stop(now + durationA);
   oscillators.push(oscA);
 
   // ---------- Tone B ----------
-  const oscB = new Tone.Oscillator({ type: "sine", volume: -6 }).toDestination();
+  const oscB = new Tone.Oscillator({ type: "sine", volume: volumeDb }).toDestination();
   const secondFreq = toneB ?? toneA;
   const startB = now + durationA;
   oscB.frequency.setValueAtTime(secondFreq, startB);
