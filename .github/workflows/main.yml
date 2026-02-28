@@ -1,0 +1,118 @@
+name: Dispatch Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish artifacts to GitHub Releases"
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - "dispatch-v*"
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Dispatch (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            builder_flags: --win nsis
+          - os: macos-latest
+            platform: mac
+            builder_flags: --mac dmg zip
+
+    defaults:
+      run:
+        working-directory: Dispatch
+
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: Dispatch/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:react
+
+      - name: Signing summary
+        shell: pwsh
+        run: |
+          $platform = "${{ matrix.platform }}"
+
+          if ($platform -eq "win") {
+            if ($env:CSC_LINK -and $env:CSC_KEY_PASSWORD) {
+              Write-Host "Windows signing: enabled"
+            } else {
+              throw "Windows signing secrets missing (CSC_LINK/CSC_KEY_PASSWORD)."
+            }
+          }
+
+          if ($platform -eq "mac") {
+            if (-not ($env:CSC_LINK -and $env:CSC_KEY_PASSWORD)) {
+              throw "macOS signing secrets missing (CSC_LINK/CSC_KEY_PASSWORD)."
+            } else {
+              Write-Host "macOS code signing: enabled"
+            }
+
+            $hasAppleIdFlow = $env:APPLE_ID -and $env:APPLE_APP_SPECIFIC_PASSWORD -and $env:APPLE_TEAM_ID
+            $hasApiKeyFlow = $env:APPLE_API_KEY -and $env:APPLE_API_KEY_ID -and $env:APPLE_API_ISSUER
+            if ($hasAppleIdFlow -or $hasApiKeyFlow) {
+              Write-Host "macOS notarization: enabled"
+            } else {
+              throw "macOS notarization secrets missing (APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID or API key trio)."
+            }
+          }
+
+      - name: Prepare Apple API key file (macOS)
+        if: matrix.platform == 'mac' && env.APPLE_API_KEY != '' && env.APPLE_API_KEY_ID != '' && env.APPLE_API_ISSUER != ''
+        shell: bash
+        run: |
+          mkdir -p "$HOME/private_keys"
+          KEY_PATH="$HOME/private_keys/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Build platform package
+        run: npx electron-builder ${{ matrix.builder_flags }} ${{ (startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish == 'true') && '-p always' || '--publish never' }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dispatch-${{ matrix.platform }}
+          path: |
+            Dispatch/dist-electron/*.exe
+            Dispatch/dist-electron/*.msi
+            Dispatch/dist-electron/*.dmg
+            Dispatch/dist-electron/*.pkg
+            Dispatch/dist-electron/*.zip
+          if-no-files-found: warn
