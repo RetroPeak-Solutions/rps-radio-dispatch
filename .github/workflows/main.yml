@@ -33,7 +33,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: '/'
+        shell: bash
 
     env:
       GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
@@ -56,10 +56,27 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          APP_DIR="."
+          if [ -f Dispatch/package.json ]; then
+            APP_DIR="Dispatch"
+          fi
+          cd "$APP_DIR"
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            echo "::warning::package-lock.json not found in $APP_DIR. Falling back to npm install."
+            npm install
+          fi
 
       - name: Build renderer
-        run: npm run build:react
+        run: |
+          APP_DIR="."
+          if [ -f Dispatch/package.json ]; then
+            APP_DIR="Dispatch"
+          fi
+          cd "$APP_DIR"
+          npm run build:react
 
       - name: Signing summary
         shell: pwsh
@@ -101,7 +118,13 @@ jobs:
           echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Build platform package
-        run: npx electron-builder ${{ matrix.builder_flags }} ${{ (startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish == 'true') && '-p always' || '--publish never' }}
+        run: |
+          APP_DIR="."
+          if [ -f Dispatch/package.json ]; then
+            APP_DIR="Dispatch"
+          fi
+          cd "$APP_DIR"
+          npx electron-builder ${{ matrix.builder_flags }} ${{ (startsWith(github.ref, 'refs/tags/') || github.event.inputs.publish == 'true') && '-p always' || '--publish never' }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -113,4 +136,9 @@ jobs:
             Dispatch/dist-electron/*.dmg
             Dispatch/dist-electron/*.pkg
             Dispatch/dist-electron/*.zip
+            dist-electron/*.exe
+            dist-electron/*.msi
+            dist-electron/*.dmg
+            dist-electron/*.pkg
+            dist-electron/*.zip
           if-no-files-found: warn
