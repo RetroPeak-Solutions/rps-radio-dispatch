@@ -1744,10 +1744,10 @@ export default function CommunityConsole() {
             >
               Zulu: {zuluTime}
             </div>
-            <div className="px-2 py-1 rounded-md text-sm text-[#9CA3AF] flex flex-col items-end">
+            {/* <div className="px-2 py-1 rounded-md text-sm text-[#9CA3AF] flex flex-col items-end">
               <div>Peer: {peerIdState ?? "—"}</div>
               <div>Connections: {peersState.length}</div>
-            </div>
+            </div> */}
             <button
               className="p-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
               onClick={() => setSettingsDialogOpen(true)}
