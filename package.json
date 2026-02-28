@@ -50,9 +50,12 @@
       "category": "public.app-category.productivity",
       "target": [
         "dmg",
-        "pkg"
+        "zip"
       ],
       "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "electron/entitlements.mac.plist",
+      "entitlementsInherit": "electron/entitlements.mac.plist",
       "icon": "electron/icons/app.icns"
     },
     "win": {
@@ -67,7 +70,8 @@
       "allowElevation": false,
       "runAfterFinish": true,
       "oneClick": false
-    }
+    },
+    "afterSign": "scripts/notarize.cjs"
   },
   "scripts": {
     "start": "electron .",

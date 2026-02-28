@@ -7,19 +7,24 @@ This repo now includes a GitHub Actions workflow:
 It builds Dispatch for:
 
 - Windows (`.exe` / NSIS target)
-- macOS (`.dmg` / `.pkg`)
+- macOS (`.dmg` / `.zip`)
 
 It publishes on:
 
 - tag push: `dispatch-v*` or `v*`
 - manual run (`workflow_dispatch`) when `publish=true`
 
+Release builds are now enforced to be signed/notarized:
+
+- Windows release job fails if signing secrets are missing.
+- macOS release job fails if signing or notarization secrets are missing.
+
 ## Required GitHub Secrets
 
 ### Always recommended
 
 - `GH_TOKEN`
-  - GitHub token with permission to upload release assets.
+  - Optional. If not set, workflow uses built-in `GITHUB_TOKEN`.
 
 ### Windows code signing
 
@@ -32,18 +37,12 @@ It publishes on:
 
 - `CSC_LINK`
 - `CSC_KEY_PASSWORD`
-
-Notarization (use one of these methods):
-
-1. Apple ID flow:
 - `APPLE_ID`
 - `APPLE_APP_SPECIFIC_PASSWORD`
 - `APPLE_TEAM_ID`
 
-2. App Store Connect API key flow:
-- `APPLE_API_KEY`
-- `APPLE_API_KEY_ID`
-- `APPLE_API_ISSUER`
+The project includes `Dispatch/scripts/notarize.cjs` and runs it via
+`electron-builder` `afterSign`.
 
 ## Behavior when secrets are missing
 
@@ -63,6 +62,11 @@ git push origin dispatch-v0.0.8
 
 4. Verify release artifacts in GitHub Releases.
 5. Smoke test installer on clean Windows/macOS machines.
+
+After one-time secrets setup, this is fully hands-off:
+
+- Push a release tag
+- Wait for Actions to publish signed/notarized artifacts
 
 ## Notes
 
