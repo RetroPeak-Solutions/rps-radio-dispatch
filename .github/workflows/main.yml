@@ -33,7 +33,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: Dispatch
+        working-directory: '/'
 
     env:
       GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
