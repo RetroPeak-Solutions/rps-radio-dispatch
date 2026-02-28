@@ -24,7 +24,10 @@
     ],
     "extraResources": [
       "./public/assets/**",
-      { "from": "public/assets", "to": "assets" },
+      {
+        "from": "public/assets",
+        "to": "assets"
+      },
       {
         "from": ".env",
         "to": "."
@@ -88,6 +91,7 @@
     "flowbite-react": "^0.12.17",
     "framer-motion": "^12.34.3",
     "lucide-react": "^0.575.0",
+    "peerjs": "^1.5.5",
     "radix-ui": "^1.4.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

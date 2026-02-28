@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Peer from "peerjs";
 import { useNavigate, useParams } from "react-router";
 import { Tab } from "@headlessui/react";
 import {
@@ -283,6 +284,8 @@ export default function CommunityConsole() {
     null,
   );
   const [pttDebug, setPttDebug] = useState("");
+  const [peerIdState, setPeerIdState] = useState<string | null>(null);
+  const [peersState, setPeersState] = useState<Array<{ peerId: string; channelIds: string[] }>>([]);
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -451,6 +454,26 @@ export default function CommunityConsole() {
   };
 
   const stopVoiceCapture = () => {
+    // Close outgoing PeerJS calls
+    try {
+      Object.values(outgoingCallsRef.current).forEach((c) => {
+        try {
+          c.close?.();
+        } catch {}
+      });
+    } catch {}
+    outgoingCallsRef.current = {};
+
+    // Close incoming calls
+    try {
+      Object.values(incomingCallsRef.current).forEach((c) => {
+        try {
+          c.close?.();
+        } catch {}
+      });
+    } catch {}
+    incomingCallsRef.current = {};
+
     if (
       voiceRecorderRef.current &&
       voiceRecorderRef.current.state !== "inactive"
@@ -514,6 +537,7 @@ export default function CommunityConsole() {
         source: "You",
         mimeType: event.data.type || mimeType || "audio/webm;codecs=opus",
         chunkBase64,
+        peerId: peerRef.current?.id,
         sequence: voiceSequenceRef.current++,
         timestamp: Date.now(),
       });
@@ -524,6 +548,35 @@ export default function CommunityConsole() {
     } catch (err) {
       console.error("[PTT] Failed to start voice capture", err);
       voiceRecorderRef.current = null;
+    }
+
+    // If PeerJS is available, call listening peers with our live stream
+    try {
+      const peer = peerRef.current;
+      if (peer) {
+        // Find peers listening on these channelIds
+        const targets = Object.values(peerMapRef.current)
+          .filter((p) => p.channelIds && p.channelIds.some((c) => channelIds.includes(c)))
+          .map((p) => p.peerId)
+          .filter(Boolean);
+
+        targets.forEach((peerId) => {
+          try {
+            const call = peer.call(peerId, stream);
+            outgoingCallsRef.current[peerId] = call;
+            call.on("close", () => {
+              delete outgoingCallsRef.current[peerId];
+            });
+            call.on("error", () => {
+              delete outgoingCallsRef.current[peerId];
+            });
+          } catch (err) {
+            console.error("[Peer] Failed to call peer", peerId, err);
+          }
+        });
+      }
+    } catch (err) {
+      console.error("[Peer] startVoiceCapture error:", err);
     }
   };
 
@@ -842,6 +895,7 @@ export default function CommunityConsole() {
         channelIds: normalizedChannelIds,
         active,
         source: "You",
+        peerId: peerRef.current?.id,
         timestamp: Date.now(),
       });
     },
@@ -975,7 +1029,22 @@ export default function CommunityConsole() {
       channelIds: string[];
       active: boolean;
       source?: string;
+      socketId?: string;
+      peerId?: string;
     }) => {
+      // If peerId was included in the event, register it for discovery
+      try {
+        if (event.peerId && event.socketId) {
+          peerMapRef.current[event.socketId] = {
+            peerId: event.peerId,
+            channelIds: event.channelIds ?? [],
+          };
+          setPeersState(
+            Object.values(peerMapRef.current).map((p) => ({ peerId: p.peerId, channelIds: p.channelIds ?? [] })),
+          );
+          console.log("[Peer] Registered peer from onPtt:", event.socketId, event.peerId);
+        }
+      } catch {}
       console.log(
         `[RX PTT] Received PTT event for channels ${event.channelIds.join(", ")}, active: ${event.active}, source: ${event.source}`,
       );
@@ -1110,9 +1179,22 @@ export default function CommunityConsole() {
       chunkBase64?: string;
       mimeType?: string;
       socketId?: string;
+      peerId?: string;
     }) => {
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
+      // If peerId was attached to the voice event, register it for discovery
+      try {
+        if (event.peerId && event.socketId) {
+          peerMapRef.current[event.socketId] = {
+            peerId: event.peerId,
+            channelIds: event.channelIds ?? [],
+          };
+          setPeersState(
+            Object.values(peerMapRef.current).map((p) => ({ peerId: p.peerId, channelIds: p.channelIds ?? [] })),
+          );
+        }
+      } catch {}
       console.log("[RX Voice] Received chunk, size:", event.chunkBase64.length);
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
@@ -1130,6 +1212,8 @@ export default function CommunityConsole() {
     socket.on("dispatch:last-src", onLastSrc);
     socket.on("dispatch:ptt-status", onPttStatus);
     socket.on("dispatch:voice", onVoice);
+
+    // Legacy `dispatch:peer-id` handler removed; discovery now uses existing events
 
     return () => {
       stopVoiceCapture();
@@ -1152,14 +1236,95 @@ export default function CommunityConsole() {
     consoleSettings.outputDeviceId,
   ]);
 
+  // Initialize PeerJS and handle incoming calls
+  useEffect(() => {
+    if (!socket || !communityId) return;
+    if (peerRef.current) return;
+
+    try {
+      const p = new Peer();
+      peerRef.current = p;
+      p.on("open", (id: string) => {
+        console.log("[Peer] open id", id);
+        setPeerIdState(id);
+        try {
+          // legacy dispatch:peer-id emission removed; discovery uses dispatch:ptt/dispatch:voice
+        } catch (err) {
+          console.error("[Peer] emit peer-id failed:", err);
+        }
+      });
+
+      p.on("call", (call: any) => {
+        console.log("[Peer] incoming call from", call.peer);
+        try {
+          // Answer without sending our own stream
+          call.answer();
+        } catch (err) {
+          console.error("[Peer] answer failed:", err);
+        }
+        call.on("stream", (remoteStream: MediaStream) => {
+          console.log("[Peer] stream received from", call.peer);
+          try {
+            const audioEl = rxMonitorAudioRef.current ?? new Audio();
+            audioEl.srcObject = remoteStream as any;
+            audioEl.play().catch((e) =>
+              console.error("[Peer] playback failed:", e),
+            );
+            incomingCallsRef.current[call.peer] = call;
+            call.on("close", () => delete incomingCallsRef.current[call.peer]);
+          } catch (err) {
+            console.error("[Peer] attach stream failed:", err);
+          }
+        });
+      });
+
+      p.on("error", (err: unknown) => console.error("[Peer] error:", err));
+    } catch (err) {
+      console.error("[Peer] initialization failed:", err);
+    }
+
+    return () => {
+      try {
+        peerRef.current?.destroy?.();
+      } catch {}
+      peerRef.current = null;
+      setPeerIdState(null);
+      setPeersState([]);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket, communityId]);
+
+  // Re-announce our peer id when our listened channels change
+  useEffect(() => {
+    const p = peerRef.current;
+    if (!socket || !p || !p.id) return;
+    try {
+      socket.emit("dispatch:peer-id", {
+        communityId,
+        peerId: p.id,
+        socketId: socket.id,
+        channelIds: listenedChannelIds,
+      });
+    } catch (err) {
+      console.error("[Peer] emit peer-id update failed:", err);
+    }
+  }, [socket, communityId, listenedChannelIds]);
+
   const incomingAudioCtxRef = useRef<AudioContext | null>(null);
   const incomingNextPlayTimeRef = useRef<number>(0);
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
+  // PeerJS (WebRTC) refs
+  const peerRef = useRef<any>(null);
+  const peerMapRef = useRef<Record<string, { peerId: string; channelIds: string[] }>>({});
+  const outgoingCallsRef = useRef<Record<string, any>>({});
+  const incomingCallsRef = useRef<Record<string, any>>({});
+
   const pendingChunksRef = useRef<Uint8Array[]>([]);
   const accumulatedChunksRef = useRef<Uint8Array[]>([]);
+  const receiveWatchdogRef = useRef<number | null>(null);
 
   const appendNextIncomingChunk = () => {
     const sb = sourceBufferRef.current;
@@ -1292,111 +1457,62 @@ export default function CommunityConsole() {
       return;
     }
 
-    console.log("[RX Audio] Accumulating chunk, size:", chunkBase64.length);
+    console.log("[RX Audio] Received chunk -> queueing (size):", chunkBase64.length);
 
+    // Ensure the MediaSource + SourceBuffer are ready
+    initIncomingAudio();
+
+    // Decode base64 -> Uint8Array
     const binary = atob(chunkBase64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
       bytes[i] = binary.charCodeAt(i);
     }
 
-    // Accumulate chunk
-    accumulatedChunksRef.current.push(bytes);
-    console.log(
-      "[RX Audio] Accumulated chunks:",
-      accumulatedChunksRef.current.length,
+    // Simple safety: cap pending queue total size to avoid runaway memory
+    const MAX_PENDING = 5 * 1024 * 1024; // 5 MB
+    const currentPending = pendingChunksRef.current.reduce(
+      (s, c) => s + c.byteLength,
+      0,
     );
+    if (currentPending + bytes.byteLength > MAX_PENDING) {
+      console.warn("[RX Audio] Pending queue exceeded max size, clearing old data");
+      pendingChunksRef.current = [];
+    }
+
+    // Queue for SourceBuffer append
+    pendingChunksRef.current.push(bytes);
+    console.log(
+      "[RX Audio] Pending queue length:",
+      pendingChunksRef.current.length,
+    );
+
+    // Start watchdog to clear stalled receives
+    if (receiveWatchdogRef.current) window.clearTimeout(receiveWatchdogRef.current);
+    receiveWatchdogRef.current = window.setTimeout(() => {
+      console.warn("[RX Audio] Receive watchdog expired - clearing pending queue and reinitializing");
+      pendingChunksRef.current = [];
+      try {
+        if (mediaSourceRef.current && mediaSourceRef.current.readyState === "open") {
+          try {
+            mediaSourceRef.current.endOfStream();
+          } catch (err) {
+            console.error("[RX Audio] endOfStream during watchdog failed:", err);
+          }
+        }
+      } catch {}
+      audioElementRef.current = null;
+      mediaSourceRef.current = null;
+      sourceBufferRef.current = null;
+    }, 30000);
+
+    // Attempt to append if possible
+    appendNextIncomingChunk();
   };
 
   const playAccumulatedAudio = async () => {
-    if (accumulatedChunksRef.current.length === 0) {
-      console.log("[RX Audio] No accumulated chunks to play");
-      return;
-    }
-
-    console.log(
-      "[RX Audio] Playing accumulated audio with",
-      accumulatedChunksRef.current.length,
-      "chunks",
-    );
-
-    // Combine all chunks into one blob
-    const totalSize = accumulatedChunksRef.current.reduce(
-      (sum, chunk) => sum + chunk.length,
-      0,
-    );
-    console.log("[RX Audio] Total combined size:", totalSize);
-    const combined = new Uint8Array(totalSize);
-    let offset = 0;
-    for (const chunk of accumulatedChunksRef.current) {
-      combined.set(chunk, offset);
-      offset += chunk.length;
-    }
-    accumulatedChunksRef.current = [];
-
-    const blob = new Blob([combined], { type: "audio/webm;codecs=opus" });
-    const url = URL.createObjectURL(blob);
-    console.log(
-      "[RX Audio] Created blob URL, size:",
-      blob.size,
-      "url:",
-      url.substring(0, 50),
-    );
-
-    const audio = new Audio(url);
-    audio.volume = 0.8;
-    const sinkId = consoleSettings.outputDeviceId;
-    console.log(
-      "[RX Audio] Audio element created, volume:",
-      audio.volume,
-      "sinkId:",
-      sinkId,
-    );
-
-    const cleanup = () => {
-      console.log("[RX Audio] Cleaning up blob URL");
-      URL.revokeObjectURL(url);
-    };
-
-    const handleEnded = () => {
-      console.log("[RX Audio] Playback ended");
-      cleanup();
-    };
-
-    const handleError = () => {
-      console.error(
-        "[RX Audio] Playback error:",
-        audio.error?.message,
-        "code:",
-        audio.error?.code,
-      );
-      cleanup();
-    };
-
-    audio.addEventListener("ended", handleEnded, { once: true });
-    audio.addEventListener("error", handleError, { once: true });
-    audio.addEventListener("play", () => console.log("[RX Audio] play event"));
-    audio.addEventListener("playing", () =>
-      console.log("[RX Audio] playing event"),
-    );
-
-    try {
-      if (sinkId && typeof (audio as any).setSinkId === "function") {
-        try {
-          console.log("[RX Audio] Setting output device to:", sinkId);
-          await (audio as any).setSinkId(sinkId);
-          console.log("[RX Audio] Set output device");
-        } catch (err) {
-          console.error("[RX Audio] setSinkId failed:", err);
-        }
-      }
-      console.log("[RX Audio] Calling audio.play()");
-      await audio.play();
-      console.log("[RX Audio] audio.play() succeeded");
-    } catch (err) {
-      console.error("[RX Audio] Play failed:", err);
-      cleanup();
-    }
+    // Deprecated: accumulated-blob playback is removed in favor of MediaSource streaming.
+    console.log("[RX Audio] playAccumulatedAudio() called - deprecated path, no-op");
   };
 
   useEffect(() => {
@@ -1627,6 +1743,10 @@ export default function CommunityConsole() {
               style={{ pointerEvents: "none", zIndex: 100 }}
             >
               Zulu: {zuluTime}
+            </div>
+            <div className="px-2 py-1 rounded-md text-sm text-[#9CA3AF] flex flex-col items-end">
+              <div>Peer: {peerIdState ?? "—"}</div>
+              <div>Connections: {peersState.length}</div>
             </div>
             <button
               className="p-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
