@@ -9,7 +9,7 @@
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-  "version": "0.0.7",
+  "version": "0.0.8",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
@@ -79,7 +79,7 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5174 && cross-env VITE_DEV_SERVER_URL=http://localhost:5174 electron .\"",
     "lint": "eslint .",
     "preview": "vite preview",
-    "publish": "vite build && electron-builder --win --mac -p always",
+    "publish": "vite build && electron-builder -mwl -p always",
     "publish:win": "vite build && electron-builder --win -p always",
     "publish:mac": "vite build && electron-builder --mac -p always",
     "build": "npm run build:react && electron-builder"
