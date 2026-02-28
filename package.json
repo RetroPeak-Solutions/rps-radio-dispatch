@@ -9,7 +9,7 @@
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-  "version": "0.0.8",
+  "version": "0.0.9",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
@@ -52,7 +52,7 @@
         "dmg",
         "zip"
       ],
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
@@ -71,7 +71,7 @@
       "runAfterFinish": true,
       "oneClick": false
     },
-    "afterSign": "scripts/notarize.cjs"
+    // "afterSign": "scripts/notarize.cjs"
   },
   "scripts": {
     "start": "electron .",
@@ -83,6 +83,7 @@
     "publish:win": "vite build && electron-builder --win -p always",
     "publish:mac": "vite build && electron-builder --mac -p always",
     "build": "npm run build:react && electron-builder",
+    "notarize": "node scripts/notarize.cjs",
     "release:ci": "node scripts/release-ci.cjs"
   },
   "dependencies": {
