@@ -61,6 +61,12 @@ npm --prefix Dispatch run release:ci -- dispatch-v0.0.8
 
 This command creates and pushes the tag for you.
 
+You can also use:
+
+```bash
+npm --prefix Dispatch run release:ci -- v0.0.8
+```
+
 Alternative manual tagging:
 
 ```bash

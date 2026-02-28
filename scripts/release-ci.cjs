@@ -9,7 +9,10 @@ function run(cmd, args) {
 }
 
 function usage() {
-  console.log("Usage: npm run release:ci -- v0.0.8");
+  console.log("Usage: npm run release:ci -- <tag>");
+  console.log("Examples:");
+  console.log("  npm run release:ci -- v0.0.8");
+  console.log("  npm run release:ci -- dispatch-v0.0.8");
 }
 
 const tag = process.argv[2];
@@ -18,9 +21,9 @@ if (!tag) {
   process.exit(1);
 }
 
-if (!/^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
+if (!/^(dispatch-)?v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(tag)) {
   console.error(
-    `Invalid tag "${tag}". Expected format: v<major>.<minor>.<patch>`,
+    `Invalid tag "${tag}". Expected format: v<major>.<minor>.<patch> (or dispatch-v<major>.<minor>.<patch>)`,
   );
   process.exit(1);
 }
