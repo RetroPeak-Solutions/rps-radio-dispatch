@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Peer from "peerjs";
 import { useNavigate, useParams } from "react-router";
 import { Tab } from "@headlessui/react";
 import {
@@ -453,130 +452,131 @@ export default function CommunityConsole() {
     drainIncomingVoiceQueue();
   };
 
-  const stopVoiceCapture = () => {
-    // Close outgoing PeerJS calls
-    try {
-      Object.values(outgoingCallsRef.current).forEach((c) => {
-        try {
-          c.close?.();
-        } catch {}
-      });
-    } catch {}
-    outgoingCallsRef.current = {};
+  const applyWebRtcAudioForSocket = useCallback((remoteSocketId: string) => {
+    const audio = webrtcAudioRef.current[remoteSocketId];
+    if (!audio) return;
+    const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
+    const listened = txChannels.filter((id) => channelListening[id]);
 
-    // Close incoming calls
-    try {
-      Object.values(incomingCallsRef.current).forEach((c) => {
-        try {
-          c.close?.();
-        } catch {}
-      });
-    } catch {}
-    incomingCallsRef.current = {};
-
-    if (
-      voiceRecorderRef.current &&
-      voiceRecorderRef.current.state !== "inactive"
-    ) {
-      try {
-        voiceRecorderRef.current.stop();
-      } catch {
-        // ignore
-      }
+    if (listened.length === 0) {
+      audio.muted = true;
+      audio.volume = 0;
+      return;
     }
-    voiceRecorderRef.current = null;
+
+    const perChannel = listened.map((id) => volumes[id] ?? 50);
+    const volume = Math.max(...perChannel, 50) / 100;
+    audio.muted = false;
+    audio.volume = volume;
+  }, [channelListening, volumes]);
+
+  const ensureWebRtcPeer = useCallback(async (targetSocketId: string) => {
+    if (!socket || !communityId || !targetSocketId) return null;
+    if (targetSocketId === socket.id) return null;
+
+    const existing = webrtcPeerConnectionsRef.current[targetSocketId];
+    if (existing) return existing;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    });
+    webrtcPeerConnectionsRef.current[targetSocketId] = pc;
+
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      socket.emit("dispatch:webrtc-signal", {
+        communityId,
+        targetSocketId,
+        candidate: event.candidate.toJSON
+          ? event.candidate.toJSON()
+          : event.candidate,
+      });
+    };
+
+    pc.ontrack = (event) => {
+      const stream = event.streams?.[0];
+      if (!stream) return;
+      let audio = webrtcAudioRef.current[targetSocketId];
+      if (!audio) {
+        audio = new Audio();
+        audio.autoplay = true;
+        audio.muted = true;
+        audio.volume = 0;
+        webrtcAudioRef.current[targetSocketId] = audio;
+      }
+      audio.srcObject = stream as any;
+      const sinkId = consoleSettings.outputDeviceId;
+      if (sinkId && typeof (audio as any).setSinkId === "function") {
+        (audio as any).setSinkId(sinkId).catch(() => {});
+      }
+      applyWebRtcAudioForSocket(targetSocketId);
+      audio.play().catch(() => {});
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+        try {
+          pc.close();
+        } catch {}
+        delete webrtcPeerConnectionsRef.current[targetSocketId];
+        if (webrtcAudioRef.current[targetSocketId]) {
+          try {
+            webrtcAudioRef.current[targetSocketId].srcObject = null;
+          } catch {}
+          delete webrtcAudioRef.current[targetSocketId];
+        }
+        delete remoteTxChannelsRef.current[targetSocketId];
+      }
+    };
+
+    const stream = micStreamRef.current;
+    if (stream) {
+      const senders = pc.getSenders();
+      stream.getAudioTracks().forEach((track) => {
+        const alreadyAdded = senders.some((sender) => sender.track?.id === track.id);
+        if (!alreadyAdded) pc.addTrack(track, stream);
+      });
+    }
+
+    return pc;
+  }, [socket, communityId, consoleSettings.outputDeviceId, applyWebRtcAudioForSocket]);
+
+  const stopVoiceCapture = () => {
     activeVoiceChannelsRef.current = [];
+    if (micStreamRef.current) {
+      micStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+    }
   };
 
   const startVoiceCapture = async (channelIds: string[]) => {
     if (!socket || !communityId || channelIds.length === 0) return;
     activeVoiceChannelsRef.current = channelIds;
-    if (
-      voiceRecorderRef.current &&
-      voiceRecorderRef.current.state !== "inactive"
-    )
-      return;
     const stream = await ensureMicStream();
-    if (!stream || typeof MediaRecorder === "undefined") return;
-
-    const mimeCandidates = [
-      "audio/webm;codecs=opus",
-      "audio/webm",
-      "audio/ogg;codecs=opus",
-      "audio/ogg",
-    ];
-    const mimeType =
-      mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || "";
-    const recorder = new MediaRecorder(
-      stream,
-      mimeType ? { mimeType } : undefined,
-    );
-    voiceRecorderRef.current = recorder;
-    voiceSequenceRef.current = 0;
-
-    recorder.ondataavailable = async (event) => {
-      console.log(
-        `[PTT] Captured voice chunk for channels ${channelIds.join(", ")} (size: ${event.data.size} bytes)`,
-      );
-      if (!event.data || event.data.size === 0) {
-        console.log("[PTT] No data in recorded chunk");
-        return;
-      }
-      if (!socket) {
-        console.log("[PTT] Socket not available for recorded chunk");
-        return;
-      }
-      if (channelIds.length === 0) {
-        console.log("[PTT] No active channels for recorded chunk");
-        return;
-      }
-      const chunkBase64 = await blobToBase64(event.data);
-      socket.emit("dispatch:voice", {
-        communityId,
-        channelIds: channelIds,
-        source: "You",
-        mimeType: event.data.type || mimeType || "audio/webm;codecs=opus",
-        chunkBase64,
-        peerId: peerRef.current?.id,
-        sequence: voiceSequenceRef.current++,
-        timestamp: Date.now(),
-      });
-    };
+    if (!stream) return;
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = true;
+    });
 
     try {
-      recorder.start(120);
-    } catch (err) {
-      console.error("[PTT] Failed to start voice capture", err);
-      voiceRecorderRef.current = null;
-    }
+      const targets = Object.entries(peerMapRef.current)
+        .filter(([, p]) => p.channelIds?.some((c) => channelIds.includes(c)))
+        .map(([socketId]) => socketId);
 
-    // If PeerJS is available, call listening peers with our live stream
-    try {
-      const peer = peerRef.current;
-      if (peer) {
-        // Find peers listening on these channelIds
-        const targets = Object.values(peerMapRef.current)
-          .filter((p) => p.channelIds && p.channelIds.some((c) => channelIds.includes(c)))
-          .map((p) => p.peerId)
-          .filter(Boolean);
-
-        targets.forEach((peerId) => {
-          try {
-            const call = peer.call(peerId, stream);
-            outgoingCallsRef.current[peerId] = call;
-            call.on("close", () => {
-              delete outgoingCallsRef.current[peerId];
-            });
-            call.on("error", () => {
-              delete outgoingCallsRef.current[peerId];
-            });
-          } catch (err) {
-            console.error("[Peer] Failed to call peer", peerId, err);
-          }
+      for (const targetSocketId of targets) {
+        const pc = await ensureWebRtcPeer(targetSocketId);
+        if (!pc || pc.signalingState !== "stable") continue;
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        socket.emit("dispatch:webrtc-signal", {
+          communityId,
+          targetSocketId,
+          description: pc.localDescription,
         });
       }
     } catch (err) {
-      console.error("[Peer] startVoiceCapture error:", err);
+      console.error("[WebRTC] startVoiceCapture error:", err);
     }
   };
 
@@ -794,6 +794,9 @@ export default function CommunityConsole() {
           : true,
       };
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
       micStreamRef.current = stream;
       return stream;
     } catch (err) {
@@ -895,7 +898,6 @@ export default function CommunityConsole() {
         channelIds: normalizedChannelIds,
         active,
         source: "You",
-        peerId: peerRef.current?.id,
         timestamp: Date.now(),
       });
     },
@@ -958,6 +960,14 @@ export default function CommunityConsole() {
       return next;
     });
 
+    socket?.emit("dispatch:tone", {
+      communityId,
+      channelIds: channels,
+      source: "You",
+      tones,
+      timestamp: Date.now(),
+    });
+
     await playTones(tones, channels, (finishedTone) => {
       setToneQueue((prev) => prev.filter((id) => id !== finishedTone.id));
     });
@@ -968,14 +978,6 @@ export default function CommunityConsole() {
         next[id] = false;
       });
       return next;
-    });
-
-    socket?.emit("dispatch:tone", {
-      communityId,
-      channelIds: channels,
-      source: "You",
-      tones,
-      timestamp: Date.now(),
     });
   };
 
@@ -1024,27 +1026,78 @@ export default function CommunityConsole() {
     if (!socket || !communityId) return;
 
     socket.emit("dispatch:join", { communityId, source: "Dispatch Console" });
+    socket.emit("dispatch:peer-id", {
+      communityId,
+      peerId: socket.id,
+      socketId: socket.id,
+      channelIds: listenedChannelIds,
+    });
+
+    const onDispatchUser = (event: {
+      type?: "join" | "leave";
+      socketId?: string;
+    }) => {
+      if (!event?.socketId || event.socketId === socket.id) return;
+      if (event.type === "join") {
+        socket.emit("dispatch:peer-id", {
+          communityId,
+          peerId: socket.id,
+          socketId: socket.id,
+          channelIds: listenedChannelIds,
+        });
+        return;
+      }
+      if (event.type === "leave") {
+        const pc = webrtcPeerConnectionsRef.current[event.socketId];
+        if (pc) {
+          try {
+            pc.close();
+          } catch {}
+          delete webrtcPeerConnectionsRef.current[event.socketId];
+        }
+        const audio = webrtcAudioRef.current[event.socketId];
+        if (audio) {
+          try {
+            audio.srcObject = null;
+          } catch {}
+          delete webrtcAudioRef.current[event.socketId];
+        }
+        delete remoteTxChannelsRef.current[event.socketId];
+        delete peerMapRef.current[event.socketId];
+        setPeersState(
+          Object.values(peerMapRef.current).map((p) => ({
+            peerId: p.peerId,
+            channelIds: p.channelIds ?? [],
+          })),
+        );
+      }
+    };
+
+    const onPeerId = (event: {
+      socketId?: string;
+      peerId?: string;
+      channelIds?: string[];
+    }) => {
+      if (!event?.socketId || !event?.peerId) return;
+      if (event.socketId === socket.id) return;
+      peerMapRef.current[event.socketId] = {
+        peerId: event.peerId,
+        channelIds: event.channelIds ?? [],
+      };
+      setPeersState(
+        Object.values(peerMapRef.current).map((p) => ({
+          peerId: p.peerId,
+          channelIds: p.channelIds ?? [],
+        })),
+      );
+    };
 
     const onPtt = (event: {
       channelIds: string[];
       active: boolean;
       source?: string;
       socketId?: string;
-      peerId?: string;
     }) => {
-      // If peerId was included in the event, register it for discovery
-      try {
-        if (event.peerId && event.socketId) {
-          peerMapRef.current[event.socketId] = {
-            peerId: event.peerId,
-            channelIds: event.channelIds ?? [],
-          };
-          setPeersState(
-            Object.values(peerMapRef.current).map((p) => ({ peerId: p.peerId, channelIds: p.channelIds ?? [] })),
-          );
-          console.log("[Peer] Registered peer from onPtt:", event.socketId, event.peerId);
-        }
-      } catch {}
       console.log(
         `[RX PTT] Received PTT event for channels ${event.channelIds.join(", ")}, active: ${event.active}, source: ${event.source}`,
       );
@@ -1054,6 +1107,17 @@ export default function CommunityConsole() {
       const normalizedIds = Array.from(
         new Set(ids.map((id) => normalizeToZoneChannelId(id))),
       );
+
+      if (event.socketId && event.socketId !== socket.id) {
+        const existing = remoteTxChannelsRef.current[event.socketId] ?? [];
+        if (event.active) {
+          remoteTxChannelsRef.current[event.socketId] = normalizedIds;
+        } else {
+          const remaining = existing.filter((id) => !normalizedIds.includes(id));
+          remoteTxChannelsRef.current[event.socketId] = remaining;
+        }
+        applyWebRtcAudioForSocket(event.socketId);
+      }
 
       setChannelsState(normalizedIds, "rx", event.active);
       setChannelLastSrc((prev) => {
@@ -1179,22 +1243,9 @@ export default function CommunityConsole() {
       chunkBase64?: string;
       mimeType?: string;
       socketId?: string;
-      peerId?: string;
     }) => {
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
-      // If peerId was attached to the voice event, register it for discovery
-      try {
-        if (event.peerId && event.socketId) {
-          peerMapRef.current[event.socketId] = {
-            peerId: event.peerId,
-            channelIds: event.channelIds ?? [],
-          };
-          setPeersState(
-            Object.values(peerMapRef.current).map((p) => ({ peerId: p.peerId, channelIds: p.channelIds ?? [] })),
-          );
-        }
-      } catch {}
       console.log("[RX Voice] Received chunk, size:", event.chunkBase64.length);
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
@@ -1208,6 +1259,8 @@ export default function CommunityConsole() {
     };
 
     socket.on("dispatch:ptt", onPtt);
+    socket.on("dispatch:user", onDispatchUser);
+    socket.on("dispatch:peer-id", onPeerId);
     socket.on("dispatch:tone", onTone);
     socket.on("dispatch:last-src", onLastSrc);
     socket.on("dispatch:ptt-status", onPttStatus);
@@ -1218,6 +1271,8 @@ export default function CommunityConsole() {
     return () => {
       stopVoiceCapture();
       socket.off("dispatch:ptt", onPtt);
+      socket.off("dispatch:user", onDispatchUser);
+      socket.off("dispatch:peer-id", onPeerId);
       socket.off("dispatch:tone", onTone);
       socket.off("dispatch:last-src", onLastSrc);
       socket.off("dispatch:ptt-status", onPttStatus);
@@ -1234,85 +1289,93 @@ export default function CommunityConsole() {
     radioChannelIdByZoneChannelId,
     consoleSettings.inputDeviceId,
     consoleSettings.outputDeviceId,
+    listenedChannelIds,
+    applyWebRtcAudioForSocket,
   ]);
 
-  // Initialize PeerJS and handle incoming calls
+  useEffect(() => {
+    if (!socket || !communityId || !socket.id) return;
+    setPeerIdState(socket.id);
+    socket.emit("dispatch:peer-id", {
+      communityId,
+      peerId: socket.id,
+      socketId: socket.id,
+      channelIds: listenedChannelIds,
+    });
+  }, [socket, communityId, listenedChannelIds]);
+
+  useEffect(() => {
+    Object.keys(webrtcAudioRef.current).forEach((socketId) => {
+      applyWebRtcAudioForSocket(socketId);
+    });
+  }, [applyWebRtcAudioForSocket]);
+
   useEffect(() => {
     if (!socket || !communityId) return;
-    if (peerRef.current) return;
 
-    try {
-      const p = new Peer({
-        // host: link("peer"),
-        port: 443,
-        secure: true,
-      });
-      peerRef.current = p;
-      p.on("open", (id: string) => {
-        console.log("[Peer] open id", id);
-        setPeerIdState(id);
-        try {
-          // legacy dispatch:peer-id emission removed; discovery uses dispatch:ptt/dispatch:voice
-        } catch (err) {
-          console.error("[Peer] emit peer-id failed:", err);
-        }
-      });
+    const onWebRtcSignal = async (event: {
+      communityId?: string;
+      fromSocketId?: string;
+      description?: RTCSessionDescriptionInit | null;
+      candidate?: RTCIceCandidateInit | null;
+    }) => {
+      if (!event?.fromSocketId || event.fromSocketId === socket.id) return;
+      if (event.communityId !== communityId) return;
+      const pc = await ensureWebRtcPeer(event.fromSocketId);
+      if (!pc) return;
 
-      p.on("call", (call: any) => {
-        console.log("[Peer] incoming call from", call.peer);
-        try {
-          // Answer without sending our own stream
-          call.answer();
-        } catch (err) {
-          console.error("[Peer] answer failed:", err);
-        }
-        call.on("stream", (remoteStream: MediaStream) => {
-          console.log("[Peer] stream received from", call.peer);
-          try {
-            const audioEl = rxMonitorAudioRef.current ?? new Audio();
-            audioEl.srcObject = remoteStream as any;
-            audioEl.play().catch((e) =>
-              console.error("[Peer] playback failed:", e),
-            );
-            incomingCallsRef.current[call.peer] = call;
-            call.on("close", () => delete incomingCallsRef.current[call.peer]);
-          } catch (err) {
-            console.error("[Peer] attach stream failed:", err);
-          }
-        });
-      });
-
-      p.on("error", (err: unknown) => console.error("[Peer] error:", err));
-    } catch (err) {
-      console.error("[Peer] initialization failed:", err);
-    }
-
-    return () => {
       try {
-        peerRef.current?.destroy?.();
-      } catch {}
-      peerRef.current = null;
-      setPeerIdState(null);
-      setPeersState([]);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, communityId]);
+        if (event.description) {
+          await pc.setRemoteDescription(event.description);
+          if (event.description.type === "offer") {
+            const stream = await ensureMicStream();
+            if (stream) {
+              const senders = pc.getSenders();
+              stream.getAudioTracks().forEach((track) => {
+                const alreadyAdded = senders.some(
+                  (sender) => sender.track?.id === track.id,
+                );
+                if (!alreadyAdded) pc.addTrack(track, stream);
+              });
+            }
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            socket.emit("dispatch:webrtc-signal", {
+              communityId,
+              targetSocketId: event.fromSocketId,
+              description: pc.localDescription,
+            });
+          }
+        }
 
-  // Re-announce our peer id when our listened channels change
-  useEffect(() => {
-    const p = peerRef.current;
-    if (!socket || !p || !p.id) return;
-    try {
-      socket.emit("dispatch:peer-id", {
-        communityId,
-        peerId: p.id,
-        socketId: socket.id,
-        channelIds: listenedChannelIds,
+        if (event.candidate) {
+          await pc.addIceCandidate(event.candidate);
+        }
+      } catch (err) {
+        console.error("[WebRTC] signaling error:", err);
+      }
+    };
+
+    socket.on("dispatch:webrtc-signal", onWebRtcSignal);
+    return () => {
+      socket.off("dispatch:webrtc-signal", onWebRtcSignal);
+      Object.keys(webrtcPeerConnectionsRef.current).forEach((socketId) => {
+        try {
+          webrtcPeerConnectionsRef.current[socketId].close();
+        } catch {}
+        delete webrtcPeerConnectionsRef.current[socketId];
       });
-    } catch (err) {
-      console.error("[Peer] emit peer-id update failed:", err);
-    }
-  }, [socket, communityId, listenedChannelIds]);
+      Object.keys(webrtcAudioRef.current).forEach((socketId) => {
+        try {
+          webrtcAudioRef.current[socketId].srcObject = null;
+        } catch {}
+        delete webrtcAudioRef.current[socketId];
+      });
+      Object.keys(remoteTxChannelsRef.current).forEach((socketId) => {
+        delete remoteTxChannelsRef.current[socketId];
+      });
+    };
+  }, [socket, communityId, ensureWebRtcPeer]);
 
   const incomingAudioCtxRef = useRef<AudioContext | null>(null);
   const incomingNextPlayTimeRef = useRef<number>(0);
@@ -1320,11 +1383,11 @@ export default function CommunityConsole() {
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
-  // PeerJS (WebRTC) refs
-  const peerRef = useRef<any>(null);
+  // WebRTC refs
   const peerMapRef = useRef<Record<string, { peerId: string; channelIds: string[] }>>({});
-  const outgoingCallsRef = useRef<Record<string, any>>({});
-  const incomingCallsRef = useRef<Record<string, any>>({});
+  const webrtcPeerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
+  const webrtcAudioRef = useRef<Record<string, HTMLAudioElement>>({});
+  const remoteTxChannelsRef = useRef<Record<string, string[]>>({});
 
   const pendingChunksRef = useRef<Uint8Array[]>([]);
   const accumulatedChunksRef = useRef<Uint8Array[]>([]);
