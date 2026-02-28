@@ -79,7 +79,7 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5174 && cross-env VITE_DEV_SERVER_URL=http://localhost:5174 electron .\"",
     "lint": "eslint .",
     "preview": "vite preview",
-    "publish": "vite build && electron-builder -mwl --x64 -p always",
+    "publish": "vite build && electron-builder -mwl always",
     "publish:win": "vite build && electron-builder --win -p always",
     "publish:mac": "vite build && electron-builder --mac -p always",
     "build": "npm run build:react && electron-builder"
