@@ -82,7 +82,8 @@
     "publish": "vite build && electron-builder -mwl always",
     "publish:win": "vite build && electron-builder --win -p always",
     "publish:mac": "vite build && electron-builder --mac -p always",
-    "build": "npm run build:react && electron-builder"
+    "build": "npm run build:react && electron-builder",
+    "release:ci": "node scripts/release-ci.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

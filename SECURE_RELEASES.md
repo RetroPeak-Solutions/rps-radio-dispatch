@@ -53,7 +53,15 @@ It prints warnings and creates unsigned artifacts. This is useful for test build
 
 1. Bump `Dispatch/package.json` version.
 2. Commit + push.
-3. Create tag:
+3. Trigger CI release from local with one command:
+
+```bash
+npm --prefix Dispatch run release:ci -- dispatch-v0.0.8
+```
+
+This command creates and pushes the tag for you.
+
+Alternative manual tagging:
 
 ```bash
 git tag dispatch-v0.0.8
