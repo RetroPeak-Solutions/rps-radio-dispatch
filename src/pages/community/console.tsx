@@ -1242,7 +1242,11 @@ export default function CommunityConsole() {
     if (peerRef.current) return;
 
     try {
-      const p = new Peer();
+      const p = new Peer({
+        // host: link("peer"),
+        port: 443,
+        secure: true,
+      });
       peerRef.current = p;
       p.on("open", (id: string) => {
         console.log("[Peer] open id", id);
