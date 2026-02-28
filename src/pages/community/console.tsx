@@ -351,31 +351,74 @@ export default function CommunityConsole() {
   };
 
   const drainIncomingVoiceQueue = () => {
-    if (incomingVoicePlayingRef.current) return;
+    if (incomingVoicePlayingRef.current) {
+      console.log("[RX Voice] Already playing, deferring");
+      return;
+    }
     const next = incomingVoiceQueueRef.current.shift();
-    if (!next) return;
+    if (!next) {
+      console.log("[RX Voice] Queue empty");
+      return;
+    }
     incomingVoicePlayingRef.current = true;
+    console.log(
+      "[RX Voice] Playing blob, queue remaining:",
+      incomingVoiceQueueRef.current.length,
+    );
     const audio = new Audio(next.src);
     audio.volume = next.volume;
     const sinkId = consoleSettings.outputDeviceId;
-    const play = async () => {
-      if (sinkId && typeof (audio as any).setSinkId === "function") {
-        try {
-          await (audio as any).setSinkId(sinkId);
-        } catch {
-          // ignore
-        }
-      }
-      await audio.play();
-    };
+
+    console.log(
+      "[RX Voice] Audio element created, src:",
+      next.src.substring(0, 50),
+      "volume:",
+      audio.volume,
+    );
+
     const finish = () => {
+      console.log("[RX Voice] Finished playing blob");
       incomingVoicePlayingRef.current = false;
       URL.revokeObjectURL(next.src);
       drainIncomingVoiceQueue();
     };
+
+    const handleError = (e: Event) => {
+      console.error(
+        "[RX Voice] Audio error:",
+        audio.error?.message,
+        audio.error?.code,
+      );
+      finish();
+    };
+
     audio.addEventListener("ended", finish, { once: true });
-    audio.addEventListener("error", finish, { once: true });
-    audio.play().catch(finish);
+    audio.addEventListener("error", handleError, { once: true });
+
+    const play = async () => {
+      if (sinkId && typeof (audio as any).setSinkId === "function") {
+        try {
+          console.log("[RX Voice] Setting sink ID:", sinkId);
+          await (audio as any).setSinkId(sinkId);
+        } catch (err) {
+          console.error("[RX Voice] setSinkId failed:", err);
+        }
+      }
+      console.log("[RX Voice] Calling audio.play()");
+      try {
+        await audio.play();
+        console.log("[RX Voice] audio.play() succeeded");
+      } catch (err) {
+        console.error("[RX Voice] audio.play() failed:", err);
+        finish();
+      }
+    };
+
+    audio.play().catch((err) => {
+      console.error("[RX Voice] Immediate play failed:", err);
+      play().catch(finish);
+    });
+
     play().catch(finish);
   };
 
@@ -385,7 +428,10 @@ export default function CommunityConsole() {
     channelIds: string[],
   ) => {
     const listened = channelIds.filter((id) => channelListening[id]);
-    if (listened.length === 0) return;
+    if (listened.length === 0) {
+      console.log("[RX Voice] No listened channels for this chunk");
+      return;
+    }
     const perChannelVolumes = listened.map((id) => volumes[id] ?? 50);
     const volume = Math.max(...perChannelVolumes, 50) / 100;
     const blob = decodeBase64ToBlob(
@@ -393,6 +439,12 @@ export default function CommunityConsole() {
       mimeType || "audio/webm;codecs=opus",
     );
     const src = URL.createObjectURL(blob);
+    console.log(
+      "[RX Voice] Enqueued blob, volume:",
+      volume,
+      "queue length:",
+      incomingVoiceQueueRef.current.length + 1,
+    );
 
     incomingVoiceQueueRef.current.push({ src, volume });
     drainIncomingVoiceQueue();
@@ -811,7 +863,7 @@ export default function CommunityConsole() {
       const tone = tones[i];
       const mappedSfx = resolveToneSfx(tone);
       if (mappedSfx) {
-        await playSfx(mappedSfx, volume / 100);
+        await playSfx(mappedSfx, volume / 100, consoleSettings.outputDeviceId);
       } else {
         await new Promise<void>((resolve) => {
           playQuickCall2(
@@ -917,7 +969,6 @@ export default function CommunityConsole() {
   useEffect(() => {
     if (!socket || !communityId) return;
 
-    
     socket.emit("dispatch:join", { communityId, source: "Dispatch Console" });
 
     const onPtt = (event: {
@@ -925,6 +976,10 @@ export default function CommunityConsole() {
       active: boolean;
       source?: string;
     }) => {
+      console.log(
+        `[RX PTT] Received PTT event for channels ${event.channelIds.join(", ")}, active: ${event.active}, source: ${event.source}`,
+      );
+      console.log(`[RX PTT] Received Event Data:`, JSON.stringify(event));
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
       const normalizedIds = Array.from(
@@ -982,11 +1037,13 @@ export default function CommunityConsole() {
       status?: "granted" | "ended" | "denied";
       channelIds?: string[];
       busyChannelIds?: string[];
+      active?: boolean;
       busyBy?: Array<{ channelId: string; source: string }>;
     }) => {
       const ids = event.channelIds ?? [];
       if (event.status === "granted") {
-        initIncomingAudio();
+        console.log("[RX Audio] PTT granted, resetting accumulated chunks");
+        accumulatedChunksRef.current = [];
         if (hotCuePendingRef.current) {
           hotCuePendingRef.current = false;
         } else {
@@ -996,10 +1053,20 @@ export default function CommunityConsole() {
         void startVoiceCapture(
           ids.length > 0 ? ids : activePttChannelsRef.current,
         );
+
+        // If a remote PTT ended (active=false), attempt to play accumulated chunks
+        if (event.active === false) {
+          console.log(
+            "[RX Audio] onPtt: receive ended, attempting to play accumulated audio",
+          );
+          void playAccumulatedAudio();
+        }
         return;
       }
       if (event.status === "ended") {
+        console.log("[RX Audio] PTT ended, playing accumulated audio");
         playPttIndicatorTone("end");
+        void playAccumulatedAudio();
         if (ids.length > 0)
           setChannelsState(
             ids.map((id) => normalizeToZoneChannelId(id)),
@@ -1010,6 +1077,8 @@ export default function CommunityConsole() {
         return;
       }
       if (event.status === "denied") {
+        console.log("[RX Audio] PTT denied, discarding accumulated chunks");
+        accumulatedChunksRef.current = [];
         playPttIndicatorTone("denied");
         setLocalPttActive(false);
         setActivePttIndicator(null);
@@ -1044,14 +1113,16 @@ export default function CommunityConsole() {
     }) => {
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
+      console.log("[RX Voice] Received chunk, size:", event.chunkBase64.length);
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
         .map(([id]) => id);
-        playIncomingChunk(
-          event.chunkBase64,
-          event.mimeType || "audio/webm;codecs=opus",
-          listeningChannelIds,
-        );
+      console.log("[RX Voice] Listening channels:", listeningChannelIds);
+      playIncomingChunk(
+        event.chunkBase64,
+        event.mimeType || "audio/webm;codecs=opus",
+        listeningChannelIds,
+      );
     };
 
     socket.on("dispatch:ptt", onPtt);
@@ -1088,11 +1159,78 @@ export default function CommunityConsole() {
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
   const pendingChunksRef = useRef<Uint8Array[]>([]);
+  const accumulatedChunksRef = useRef<Uint8Array[]>([]);
+
+  const appendNextIncomingChunk = () => {
+    const sb = sourceBufferRef.current;
+    const audio = audioElementRef.current;
+    if (!sb) {
+      console.log("[RX Audio] appendNextIncomingChunk: no sourceBuffer");
+      return;
+    }
+    if (sb.updating) {
+      console.log("[RX Audio] appendNextIncomingChunk: sourceBuffer updating");
+      return;
+    }
+    const next = pendingChunksRef.current.shift();
+    if (!next) {
+      console.log(
+        "[RX Audio] appendNextIncomingChunk: queue empty, buffered:",
+        sb.buffered.length > 0 ? `${sb.buffered.length} ranges` : "none",
+      );
+      return;
+    }
+    try {
+      console.log(
+        "[RX Audio] Appending chunk size:",
+        next.byteLength,
+        "queue remaining:",
+        pendingChunksRef.current.length,
+        "duration:",
+        audio?.duration ?? "unknown",
+      );
+      sb.appendBuffer(new Uint8Array(next));
+      // Resume audio playback if paused
+      if (audio && audio.paused) {
+        console.log("[RX Audio] Audio was paused, resuming playback");
+        audio.play().catch((err) => {
+          console.error("[RX Audio] Failed to resume playback:", err);
+        });
+      }
+    } catch (err) {
+      console.error("[RX Audio] appendBuffer error:", err);
+      // If append fails, re-queue and give it a moment
+      pendingChunksRef.current.unshift(next);
+      setTimeout(appendNextIncomingChunk, 50);
+    }
+  };
 
   const initIncomingAudio = () => {
-    if (audioElementRef.current) return;
+    if (
+      audioElementRef.current &&
+      mediaSourceRef.current?.readyState === "open"
+    ) {
+      console.log("[RX Audio] Already initialized and open, skipping");
+      return;
+    }
 
-    const audio = new Audio();
+    console.log("[RX Audio] Initializing incoming audio");
+    // Reset refs if reinitializing
+    if (audioElementRef.current) {
+      console.log("[RX Audio] Previous MediaSource was closed, reinitializing");
+      audioElementRef.current = null;
+      mediaSourceRef.current = null;
+      sourceBufferRef.current = null;
+      pendingChunksRef.current = [];
+    }
+
+    // Prefer the hidden DOM audio element so `setSinkId` (output device) applies.
+    const domAudio = rxMonitorAudioRef.current;
+    const audio = domAudio ?? new Audio();
+    console.log(
+      "[RX Audio] Using",
+      domAudio ? "DOM audio element" : "new Audio()",
+    );
     audio.autoplay = true;
     audio.muted = false;
 
@@ -1102,26 +1240,43 @@ export default function CommunityConsole() {
     mediaSourceRef.current = mediaSource;
 
     audio.src = URL.createObjectURL(mediaSource);
+    console.log("[RX Audio] MediaSource created and attached");
 
     mediaSource.addEventListener("sourceopen", () => {
-      const sb = mediaSource.addSourceBuffer(
-        'audio/webm; codecs="opus"'
-      );
+      console.log("[RX Audio] sourceopen fired");
+      const sb = mediaSource.addSourceBuffer('audio/webm; codecs="opus"');
       sb.mode = "sequence";
       sourceBufferRef.current = sb;
+      console.log("[RX Audio] SourceBuffer created");
 
-      // Flush queued chunks
-      pendingChunksRef.current.forEach((chunk) => {
-        // Create a copy with a fresh ArrayBuffer to avoid SharedArrayBuffer compatibility issues
-        const safeBuf = new Uint8Array(new ArrayBuffer(chunk.length));
-        safeBuf.set(chunk);
-        sb.appendBuffer(safeBuf);
-      });
-      pendingChunksRef.current = [];
+      // Attach a stable updateend handler to drain our queue
+      sb.addEventListener("updateend", appendNextIncomingChunk);
+      console.log("[RX Audio] updateend listener attached");
+
+      // Flush queued chunks using the append queue helper
+      appendNextIncomingChunk();
     });
 
-    // 🔥 Force playback start (important)
-    audio.play().catch(() => {});
+    // Attach playback event listeners for debugging
+    audio.addEventListener("play", () => {
+      console.log("[RX Audio] playback started");
+    });
+    audio.addEventListener("pause", () => {
+      console.log("[RX Audio] playback paused");
+    });
+    audio.addEventListener("ended", () => {
+      console.log("[RX Audio] playback ended");
+    });
+    audio.addEventListener("playing", () => {
+      console.log("[RX Audio] audio playing event");
+    });
+
+    // Ensure playback starts; if using the DOM audio element, `setSinkId` has likely
+    // already been applied elsewhere (see useEffect), so this will play on selected device.
+    console.log("[RX Audio] Calling audio.play()");
+    audio.play().catch((err) => {
+      console.error("[RX Audio] audio.play() failed:", err);
+    });
   };
 
   const playIncomingChunk = (
@@ -1132,7 +1287,12 @@ export default function CommunityConsole() {
     if (!Array.isArray(channelIds)) return;
 
     const listened = channelIds.filter((id) => channelListening[id]);
-    if (listened.length === 0) return;
+    if (listened.length === 0) {
+      console.log("[RX Audio] No listened channels for this chunk");
+      return;
+    }
+
+    console.log("[RX Audio] Accumulating chunk, size:", chunkBase64.length);
 
     const binary = atob(chunkBase64);
     const bytes = new Uint8Array(binary.length);
@@ -1140,25 +1300,102 @@ export default function CommunityConsole() {
       bytes[i] = binary.charCodeAt(i);
     }
 
-    // Create a copy with a fresh ArrayBuffer to avoid SharedArrayBuffer compatibility issues
-    const safeBuf = new Uint8Array(new ArrayBuffer(bytes.length));
-    safeBuf.set(bytes);
+    // Accumulate chunk
+    accumulatedChunksRef.current.push(bytes);
+    console.log(
+      "[RX Audio] Accumulated chunks:",
+      accumulatedChunksRef.current.length,
+    );
+  };
 
-    const sb = sourceBufferRef.current;
-
-    if (!sb) {
-      pendingChunksRef.current.push(safeBuf);
+  const playAccumulatedAudio = async () => {
+    if (accumulatedChunksRef.current.length === 0) {
+      console.log("[RX Audio] No accumulated chunks to play");
       return;
     }
 
-    if (sb.updating) {
-      sb.addEventListener(
-        "updateend",
-        () => sb.appendBuffer(safeBuf),
-        { once: true }
+    console.log(
+      "[RX Audio] Playing accumulated audio with",
+      accumulatedChunksRef.current.length,
+      "chunks",
+    );
+
+    // Combine all chunks into one blob
+    const totalSize = accumulatedChunksRef.current.reduce(
+      (sum, chunk) => sum + chunk.length,
+      0,
+    );
+    console.log("[RX Audio] Total combined size:", totalSize);
+    const combined = new Uint8Array(totalSize);
+    let offset = 0;
+    for (const chunk of accumulatedChunksRef.current) {
+      combined.set(chunk, offset);
+      offset += chunk.length;
+    }
+    accumulatedChunksRef.current = [];
+
+    const blob = new Blob([combined], { type: "audio/webm;codecs=opus" });
+    const url = URL.createObjectURL(blob);
+    console.log(
+      "[RX Audio] Created blob URL, size:",
+      blob.size,
+      "url:",
+      url.substring(0, 50),
+    );
+
+    const audio = new Audio(url);
+    audio.volume = 0.8;
+    const sinkId = consoleSettings.outputDeviceId;
+    console.log(
+      "[RX Audio] Audio element created, volume:",
+      audio.volume,
+      "sinkId:",
+      sinkId,
+    );
+
+    const cleanup = () => {
+      console.log("[RX Audio] Cleaning up blob URL");
+      URL.revokeObjectURL(url);
+    };
+
+    const handleEnded = () => {
+      console.log("[RX Audio] Playback ended");
+      cleanup();
+    };
+
+    const handleError = () => {
+      console.error(
+        "[RX Audio] Playback error:",
+        audio.error?.message,
+        "code:",
+        audio.error?.code,
       );
-    } else {
-      sb.appendBuffer(safeBuf);
+      cleanup();
+    };
+
+    audio.addEventListener("ended", handleEnded, { once: true });
+    audio.addEventListener("error", handleError, { once: true });
+    audio.addEventListener("play", () => console.log("[RX Audio] play event"));
+    audio.addEventListener("playing", () =>
+      console.log("[RX Audio] playing event"),
+    );
+
+    try {
+      if (sinkId && typeof (audio as any).setSinkId === "function") {
+        try {
+          console.log("[RX Audio] Setting output device to:", sinkId);
+          await (audio as any).setSinkId(sinkId);
+          console.log("[RX Audio] Set output device");
+        } catch (err) {
+          console.error("[RX Audio] setSinkId failed:", err);
+        }
+      }
+      console.log("[RX Audio] Calling audio.play()");
+      await audio.play();
+      console.log("[RX Audio] audio.play() succeeded");
+    } catch (err) {
+      console.error("[RX Audio] Play failed:", err);
+      cleanup();
     }
   };
 
