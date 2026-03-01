@@ -62,8 +62,10 @@ type RadioEffectChain = {
 
 type RemoteAudioPipeline = {
   streamId: string;
+  context: AudioContext;
   source: AudioNode;
   outputGain: GainNode;
+  outputAudio: HTMLAudioElement;
 };
 
 const CARD_WIDTH = 350;
@@ -86,6 +88,7 @@ const LEGACY_LOG_DEBUG = false;
 // TODO(owner/admin toggle): gate this by community role permissions when you are ready.
 const ENFORCE_REQUIRED_RADIO_VOCODER = true;
 const SAFE_RADIO_CHAIN = true;
+const USE_SERVER_VOICE_FRAMES = true;
 
 const EMPTY_SLOT = { id: "", key: [] as string[] };
 const DEFAULT_COMMUNITY_PTT_CHANNELS: CommunityPttChannels = {
@@ -367,6 +370,7 @@ export default function CommunityConsole() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micInputDeviceIdRef = useRef<string>("");
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
+  const rxFrameAudioRef = useRef<HTMLAudioElement | null>(null);
   const rxProcessedAudioRef = useRef<HTMLAudioElement | null>(null);
   const sharedAudioCtxRef = useRef<AudioContext | null>(null);
   const processedMixDestinationRef =
@@ -378,6 +382,14 @@ export default function CommunityConsole() {
   const noPipelineFirstSeenAtRef = useRef<Record<string, number>>({});
   const activePttChannelsRef = useRef<string[]>([]);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const txFrameCtxRef = useRef<AudioContext | null>(null);
+  const txFrameSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const txFrameProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const txFrameSilentGainRef = useRef<GainNode | null>(null);
+  const rxFrameCtxRef = useRef<AudioContext | null>(null);
+  const rxFrameDestinationRef =
+    useRef<MediaStreamAudioDestinationNode | null>(null);
+  const rxFrameNextPlayTimeRef = useRef<number>(0);
   const activeVoiceChannelsRef = useRef<string[]>([]);
   const voiceSequenceRef = useRef(0);
   const incomingVoiceQueueRef = useRef<Array<{ src: string; volume: number }>>(
@@ -493,30 +505,37 @@ export default function CommunityConsole() {
   const createRadioEffectChain = (ctx: AudioContext): RadioEffectChain => {
     const input = ctx.createGain();
     const dryMix = ctx.createGain();
-    dryMix.gain.value = 0.55;
+    dryMix.gain.value = 0.35;
     const inputTrim = ctx.createGain();
-    inputTrim.gain.value = 1.2;
+    inputTrim.gain.value = 1.15;
 
     const hpf = ctx.createBiquadFilter();
     hpf.type = "highpass";
-    hpf.frequency.value = 260;
-    hpf.Q.value = 0.707;
+    hpf.frequency.value = 320;
+    hpf.Q.value = 0.8;
 
     const presence = ctx.createBiquadFilter();
     presence.type = "peaking";
     presence.frequency.value = 1700;
     presence.Q.value = 1.1;
-    presence.gain.value = 4;
+    presence.gain.value = 3.5;
 
     const lpf = ctx.createBiquadFilter();
     lpf.type = "lowpass";
-    lpf.frequency.value = 3400;
-    lpf.Q.value = 0.707;
+    lpf.frequency.value = 2900;
+    lpf.Q.value = 0.8;
+
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -22;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 6;
+    compressor.attack.value = 0.004;
+    compressor.release.value = 0.12;
 
     const processedMix = ctx.createGain();
     processedMix.gain.value = 0.9;
     const output = ctx.createGain();
-    output.gain.value = SAFE_RADIO_CHAIN ? 1.35 : 1.0;
+    output.gain.value = SAFE_RADIO_CHAIN ? 1.2 : 1.0;
 
     input.connect(dryMix);
     dryMix.connect(output);
@@ -524,7 +543,8 @@ export default function CommunityConsole() {
     inputTrim.connect(hpf);
     hpf.connect(presence);
     presence.connect(lpf);
-    lpf.connect(processedMix);
+    lpf.connect(compressor);
+    compressor.connect(processedMix);
     processedMix.connect(output);
 
     return { input, output };
@@ -534,18 +554,6 @@ export default function CommunityConsole() {
     ctx: AudioContext,
     stream: MediaStream,
   ): { node: AudioNode; kind: "track" | "stream" } => {
-    const track = stream.getAudioTracks()[0];
-    const TrackSourceCtor = (window as any).MediaStreamTrackAudioSourceNode;
-    if (track && typeof TrackSourceCtor === "function") {
-      try {
-        const node = new TrackSourceCtor(ctx, {
-          mediaStreamTrack: track,
-        }) as AudioNode;
-        return { node, kind: "track" };
-      } catch (err) {
-        voiceWarn("remote-input:track-source-failed", err);
-      }
-    }
     return {
       node: ctx.createMediaStreamSource(stream),
       kind: "stream",
@@ -561,6 +569,15 @@ export default function CommunityConsole() {
     try {
       pipeline.outputGain.disconnect();
     } catch {}
+    try {
+      pipeline.outputAudio.pause();
+    } catch {}
+    try {
+      pipeline.outputAudio.srcObject = null;
+    } catch {}
+    try {
+      void pipeline.context.close();
+    } catch {}
     delete remoteAudioPipelinesRef.current[socketId];
     delete noPipelineLogAtRef.current[socketId];
     delete noPipelineFirstSeenAtRef.current[socketId];
@@ -572,13 +589,14 @@ export default function CommunityConsole() {
     stream: MediaStream,
   ) => {
     const existing = remoteAudioPipelinesRef.current[socketId];
-    if (existing && existing.streamId === stream.id)
-      return rxProcessedAudioRef.current;
+    if (existing && existing.streamId === stream.id) return existing.outputAudio;
     if (existing) teardownRemoteAudioPipeline(socketId);
 
-    const output = await ensureProcessedOutputReady();
-    if (!output) return null;
-    const { ctx, destination } = output;
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    const ctx: AudioContext = new AudioCtx();
+    const destination = ctx.createMediaStreamDestination();
 
     const sourceResult = createRemoteInputSource(ctx, stream);
     const source = sourceResult.node;
@@ -600,10 +618,62 @@ export default function CommunityConsole() {
     }
     outputGain.connect(destination);
 
+    let outputAudio = webrtcAudioRef.current[socketId];
+    if (!outputAudio) {
+      outputAudio = new Audio();
+      outputAudio.autoplay = true;
+      outputAudio.muted = false;
+      webrtcAudioRef.current[socketId] = outputAudio;
+    }
+    if (outputAudio.srcObject !== destination.stream) {
+      outputAudio.srcObject = destination.stream;
+    }
+    const sinkId = consoleSettings.outputDeviceId;
+    if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
+      try {
+        await (outputAudio as any).setSinkId(sinkId);
+      } catch {}
+    }
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {}
+    }
+    if (ctx.state !== "running") {
+      voiceWarn("remote-audio-pipeline:context-not-running", {
+        socketId,
+        state: ctx.state,
+      });
+      try {
+        outputAudio.srcObject = null;
+      } catch {}
+      try {
+        void ctx.close();
+      } catch {}
+      return null;
+    }
+    try {
+      await outputAudio.play();
+    } catch (err) {
+      voiceWarn("remote-audio-pipeline:play-failed", {
+        socketId,
+        err,
+      });
+      try {
+        outputAudio.srcObject = null;
+      } catch {}
+      try {
+        void ctx.close();
+      } catch {}
+      return null;
+    }
+
     remoteAudioPipelinesRef.current[socketId] = {
       streamId: stream.id,
+      context: ctx,
       source,
       outputGain,
+      outputAudio,
     };
 
     voiceDebug("remote-audio-pipeline:created", {
@@ -611,7 +681,7 @@ export default function CommunityConsole() {
       streamId: stream.id,
       enforcedVocoder: ENFORCE_REQUIRED_RADIO_VOCODER,
     });
-    return rxProcessedAudioRef.current;
+    return outputAudio;
   };
 
   const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
@@ -642,6 +712,212 @@ export default function CommunityConsole() {
       bytes[i] = binary.charCodeAt(i);
     }
     return new Blob([bytes], { type: mimeType });
+  };
+
+  const encodeInt16ToBase64 = (samples: Int16Array) => {
+    const bytes = new Uint8Array(
+      samples.buffer,
+      samples.byteOffset,
+      samples.byteLength,
+    );
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  };
+
+  const decodeBase64ToInt16 = (base64: string) => {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return new Int16Array(
+      bytes.buffer,
+      bytes.byteOffset,
+      Math.floor(bytes.byteLength / 2),
+    );
+  };
+
+  const downsampleTo16kMono = (
+    input: Float32Array,
+    sourceRate: number,
+  ): Int16Array => {
+    const targetRate = 16000;
+    if (sourceRate <= targetRate) {
+      const out = new Int16Array(input.length);
+      for (let i = 0; i < input.length; i += 1) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        out[i] = (s * 32767) | 0;
+      }
+      return out;
+    }
+    const ratio = sourceRate / targetRate;
+    const length = Math.max(1, Math.floor(input.length / ratio));
+    const out = new Int16Array(length);
+    let outIdx = 0;
+    let pos = 0;
+    while (outIdx < length) {
+      const nextPos = pos + ratio;
+      const start = Math.floor(pos);
+      const end = Math.min(input.length, Math.floor(nextPos));
+      let sum = 0;
+      let count = 0;
+      for (let i = start; i < end; i += 1) {
+        sum += input[i];
+        count += 1;
+      }
+      const v = count > 0 ? sum / count : input[Math.min(start, input.length - 1)] || 0;
+      const clamped = Math.max(-1, Math.min(1, v));
+      out[outIdx] = (clamped * 32767) | 0;
+      outIdx += 1;
+      pos = nextPos;
+    }
+    return out;
+  };
+
+  const stopVoiceFrameCapture = () => {
+    try {
+      txFrameProcessorRef.current?.disconnect();
+    } catch {}
+    try {
+      txFrameSourceRef.current?.disconnect();
+    } catch {}
+    try {
+      txFrameSilentGainRef.current?.disconnect();
+    } catch {}
+    if (txFrameCtxRef.current) {
+      try {
+        void txFrameCtxRef.current.close();
+      } catch {}
+    }
+    txFrameProcessorRef.current = null;
+    txFrameSourceRef.current = null;
+    txFrameSilentGainRef.current = null;
+    txFrameCtxRef.current = null;
+  };
+
+  const startVoiceFrameCapture = async (stream: MediaStream) => {
+    if (!USE_SERVER_VOICE_FRAMES || !socket || !communityId) return;
+    stopVoiceFrameCapture();
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx: AudioContext = new AudioCtx();
+    const source = ctx.createMediaStreamSource(stream);
+    const processor = ctx.createScriptProcessor(2048, 1, 1);
+    const silentGain = ctx.createGain();
+    silentGain.gain.value = 0;
+
+    processor.onaudioprocess = (event) => {
+      const activeChannels = activeVoiceChannelsRef.current;
+      if (!socket || !communityId || activeChannels.length === 0) return;
+      const input = event.inputBuffer.getChannelData(0);
+      if (!input || input.length === 0) return;
+      const frame = downsampleTo16kMono(input, event.inputBuffer.sampleRate);
+      if (!frame || frame.length === 0) return;
+      socket.emit("dispatch:voice-frame", {
+        communityId,
+        channelIds: activeChannels,
+        sampleRate: 16000,
+        frameBase64: encodeInt16ToBase64(frame),
+        timestamp: Date.now(),
+      });
+    };
+
+    source.connect(processor);
+    processor.connect(silentGain);
+    silentGain.connect(ctx.destination);
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {}
+    }
+
+    txFrameCtxRef.current = ctx;
+    txFrameSourceRef.current = source;
+    txFrameProcessorRef.current = processor;
+    txFrameSilentGainRef.current = silentGain;
+  };
+
+  const ensureRxFrameOutputReady = async () => {
+    if (!USE_SERVER_VOICE_FRAMES) return null;
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!rxFrameCtxRef.current) {
+      rxFrameCtxRef.current = new AudioCtx();
+    }
+    const ctx = rxFrameCtxRef.current;
+    if (!rxFrameDestinationRef.current) {
+      rxFrameDestinationRef.current = ctx.createMediaStreamDestination();
+    }
+    const outputAudio = rxFrameAudioRef.current;
+    if (!outputAudio) return null;
+    if (outputAudio.srcObject !== rxFrameDestinationRef.current.stream) {
+      outputAudio.srcObject = rxFrameDestinationRef.current.stream;
+    }
+    outputAudio.autoplay = true;
+    outputAudio.muted = false;
+    const sinkId = consoleSettings.outputDeviceId;
+    if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
+      try {
+        await (outputAudio as any).setSinkId(sinkId);
+      } catch {}
+    }
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {}
+    }
+    outputAudio.play().catch(() => {});
+    return { ctx, destination: rxFrameDestinationRef.current };
+  };
+
+  const playIncomingVoiceFrame = async (
+    frameBase64: string,
+    sampleRate: number,
+    channelIds: string[],
+  ) => {
+    const listened = channelIds.filter((id) => channelListening[id]);
+    if (listened.length === 0) return;
+    const out = await ensureRxFrameOutputReady();
+    if (!out) return;
+    const { ctx, destination } = out;
+    const frame = decodeBase64ToInt16(frameBase64);
+    if (!frame || frame.length === 0) return;
+
+    const buffer = ctx.createBuffer(1, frame.length, sampleRate || 16000);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < frame.length; i += 1) {
+      channel[i] = frame[i] / 32768;
+    }
+
+    const gainNode = ctx.createGain();
+    const perChannel = listened.map((id) => {
+      const value = volumes[id] ?? 50;
+      return Math.max(0, Math.min(100, value));
+    });
+    gainNode.gain.value = Math.max(...perChannel) / 100;
+
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(gainNode);
+    gainNode.connect(destination);
+
+    const startAt = Math.max(ctx.currentTime + 0.01, rxFrameNextPlayTimeRef.current);
+    source.start(startAt);
+    rxFrameNextPlayTimeRef.current = startAt + buffer.duration;
+    source.onended = () => {
+      try {
+        source.disconnect();
+      } catch {}
+      try {
+        gainNode.disconnect();
+      } catch {}
+    };
   };
 
   const drainIncomingVoiceQueue = () => {
@@ -749,36 +1025,43 @@ export default function CommunityConsole() {
 
   const applyWebRtcAudioForSocket = useCallback((remoteSocketId: string) => {
     const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
+    const pipeline = remoteAudioPipelinesRef.current[remoteSocketId];
     const audio = webrtcAudioRef.current[remoteSocketId];
-    if (!audio) {
+    if (!pipeline && !audio) {
       if (txChannels.length > 0) {
         voiceDebug("apply-gain:no-audio-element", { remoteSocketId });
       }
       return;
     }
 
-    if (txChannels.length === 0) {
-      audio.volume = 0;
-      voiceDebug("apply-gain:muted", {
-        remoteSocketId,
-        txChannels,
-      });
-      return;
-    }
+    const activeRxChannels = Object.entries(channelReceiving)
+      .filter(([id, active]) => active && channelListening[id])
+      .map(([id]) => id);
 
     const listened = txChannels.filter((id) => channelListening[id]);
     const channelsForGain =
       listened.length > 0
         ? listened
-        : Object.entries(channelListening)
-            .filter(([, on]) => on)
-            .map(([id]) => id);
+        : txChannels.length > 0
+          ? Object.entries(channelListening)
+              .filter(([, on]) => on)
+              .map(([id]) => id)
+          : activeRxChannels.length > 0
+            ? activeRxChannels
+            : Object.entries(channelListening)
+                .filter(([, on]) => on)
+                .map(([id]) => id);
 
     if (channelsForGain.length === 0) {
-      audio.volume = 0;
+      if (pipeline) {
+        pipeline.outputGain.gain.value = 0;
+      } else if (audio) {
+        audio.volume = 0;
+      }
       voiceDebug("apply-gain:muted-no-listened", {
         remoteSocketId,
         txChannels,
+        activeRxChannels,
       });
       return;
     }
@@ -788,13 +1071,18 @@ export default function CommunityConsole() {
       return Math.max(0, Math.min(100, value));
     });
     const volume = Math.max(...perChannel) / 100;
-    audio.volume = volume;
+    if (pipeline) {
+      pipeline.outputGain.gain.value = volume;
+      pipeline.outputAudio.volume = 1;
+    } else if (audio) {
+      audio.volume = volume;
+    }
     voiceDebug("apply-gain:active", {
       remoteSocketId,
       listened: channelsForGain,
       volume,
     });
-  }, [channelListening, volumes]);
+  }, [channelListening, channelReceiving, volumes]);
 
   const ensureWebRtcPeer = useCallback(async (targetSocketId: string) => {
     debugLog("ensureWebRtcPeer:start", {
@@ -860,29 +1148,38 @@ export default function CommunityConsole() {
             targetSocketId,
             trackId: track.id,
           });
-        track.onended = () =>
+        track.onended = () => {
           voiceWarn("webrtc:remote-track-ended", {
             targetSocketId,
             trackId: track.id,
           });
+          teardownRemoteAudioPipeline(targetSocketId);
+          delete webrtcAudioRef.current[targetSocketId];
+        };
       }
-      let audio = webrtcAudioRef.current[targetSocketId];
-      if (!audio) {
-        audio = new Audio();
-        audio.autoplay = true;
-        audio.muted = false;
-        webrtcAudioRef.current[targetSocketId] = audio;
-      }
-      if (audio.srcObject !== stream) {
-        audio.srcObject = stream;
-      }
-      const sinkId = consoleSettings.outputDeviceId;
-      if (sinkId && typeof (audio as any).setSinkId === "function") {
-        void (audio as any).setSinkId(sinkId).catch(() => {});
-      }
-      void audio.play().catch(() => {});
-      applyWebRtcAudioForSocket(targetSocketId);
-      voiceDebug("webrtc:ontrack:audio-ready", { targetSocketId });
+      void ensureRemoteAudioPipeline(targetSocketId, stream).then((audio) => {
+        if (audio) {
+          webrtcAudioRef.current[targetSocketId] = audio;
+          applyWebRtcAudioForSocket(targetSocketId);
+          voiceDebug("webrtc:ontrack:pipeline-ready", { targetSocketId });
+          return;
+        }
+        let fallbackAudio = webrtcAudioRef.current[targetSocketId];
+        if (!fallbackAudio) {
+          fallbackAudio = new Audio();
+          fallbackAudio.autoplay = true;
+          fallbackAudio.muted = false;
+          webrtcAudioRef.current[targetSocketId] = fallbackAudio;
+        }
+        fallbackAudio.srcObject = stream;
+        const sinkId = consoleSettings.outputDeviceId;
+        if (sinkId && typeof (fallbackAudio as any).setSinkId === "function") {
+          void (fallbackAudio as any).setSinkId(sinkId).catch(() => {});
+        }
+        void fallbackAudio.play().catch(() => {});
+        applyWebRtcAudioForSocket(targetSocketId);
+        voiceWarn("webrtc:ontrack:fallback-raw-audio", { targetSocketId });
+      });
     };
 
     pc.onconnectionstatechange = () => {
@@ -925,6 +1222,7 @@ export default function CommunityConsole() {
       activeVoiceChannels: activeVoiceChannelsRef.current,
     });
     activeVoiceChannelsRef.current = [];
+    stopVoiceFrameCapture();
     if (micStreamRef.current) {
       micStreamRef.current.getAudioTracks().forEach((track) => {
         track.enabled = false;
@@ -950,6 +1248,9 @@ export default function CommunityConsole() {
         readyState: track.readyState,
       });
     });
+
+    await startVoiceFrameCapture(stream);
+    if (USE_SERVER_VOICE_FRAMES) return;
 
     try {
       const targets = Object.entries(peerMapRef.current)
@@ -1750,6 +2051,38 @@ export default function CommunityConsole() {
       );
     };
 
+    const onVoiceFrame = (event: {
+      channelIds?: string[];
+      frameBase64?: string;
+      sampleRate?: number;
+      socketId?: string;
+    }) => {
+      if (
+        !event?.frameBase64 ||
+        !Array.isArray(event.channelIds) ||
+        event.channelIds.length === 0
+      )
+        return;
+      if (event.socketId && event.socketId === socket.id) return;
+      const listeningChannelIds = Object.entries(channelListening)
+        .filter(([, listening]) => listening)
+        .map(([id]) => id);
+      const normalizedChannelIds = Array.from(
+        new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
+      );
+      const routedChannelIds =
+        normalizedChannelIds.length > 0
+          ? normalizedChannelIds.filter((id) => channelListening[id])
+          : [];
+      const playbackChannels =
+        routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
+      void playIncomingVoiceFrame(
+        event.frameBase64,
+        event.sampleRate || 16000,
+        playbackChannels,
+      );
+    };
+
     socket.on("dispatch:ptt", onPtt);
     socket.on("dispatch:user", onDispatchUser);
     socket.on("dispatch:peer-id", onPeerId);
@@ -1757,6 +2090,7 @@ export default function CommunityConsole() {
     socket.on("dispatch:last-src", onLastSrc);
     socket.on("dispatch:ptt-status", onPttStatus);
     socket.on("dispatch:voice", onVoice);
+    socket.on("dispatch:voice-frame", onVoiceFrame);
 
     // Legacy `dispatch:peer-id` handler removed; discovery now uses existing events
 
@@ -1773,6 +2107,7 @@ export default function CommunityConsole() {
       socket.off("dispatch:last-src", onLastSrc);
       socket.off("dispatch:ptt-status", onPttStatus);
       socket.off("dispatch:voice", onVoice);
+      socket.off("dispatch:voice-frame", onVoiceFrame);
       socket.emit("dispatch:leave", { communityId });
     };
   }, [
@@ -2220,6 +2555,7 @@ export default function CommunityConsole() {
 
     void setSink(rxProcessedAudioRef.current);
     void setSink(rxMonitorAudioRef.current);
+    void setSink(rxFrameAudioRef.current);
     Object.values(webrtcAudioRef.current).forEach((audio) => {
       void setSink(audio);
     });
@@ -2428,6 +2764,7 @@ export default function CommunityConsole() {
   useEffect(() => {
     return () => {
       destroyMicStream();
+      stopVoiceFrameCapture();
       Object.keys(remoteAudioPipelinesRef.current).forEach((socketId) => {
         teardownRemoteAudioPipeline(socketId);
       });
@@ -2445,6 +2782,12 @@ export default function CommunityConsole() {
           void sharedAudioCtxRef.current.close();
         } catch {}
         sharedAudioCtxRef.current = null;
+      }
+      if (rxFrameCtxRef.current) {
+        try {
+          void rxFrameCtxRef.current.close();
+        } catch {}
+        rxFrameCtxRef.current = null;
       }
     };
   }, []);
@@ -2870,6 +3213,7 @@ export default function CommunityConsole() {
         onSave={updateConsoleSettings}
       />
       <audio ref={rxMonitorAudioRef} className="hidden" autoPlay />
+      <audio ref={rxFrameAudioRef} className="hidden" autoPlay />
       <audio ref={rxProcessedAudioRef} className="hidden" autoPlay />
     </>
   );
