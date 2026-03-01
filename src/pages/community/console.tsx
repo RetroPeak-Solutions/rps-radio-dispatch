@@ -85,6 +85,7 @@ const VOICE_PATH_DEBUG = true;
 const LEGACY_LOG_DEBUG = false;
 // TODO(owner/admin toggle): gate this by community role permissions when you are ready.
 const ENFORCE_REQUIRED_RADIO_VOCODER = true;
+const SAFE_RADIO_CHAIN = true;
 
 const EMPTY_SLOT = { id: "", key: [] as string[] };
 const DEFAULT_COMMUNITY_PTT_CHANNELS: CommunityPttChannels = {
@@ -461,44 +462,33 @@ export default function CommunityConsole() {
 
   const createRadioEffectChain = (ctx: AudioContext): RadioEffectChain => {
     const input = ctx.createGain();
+    const inputTrim = ctx.createGain();
+    inputTrim.gain.value = 1.2;
+
     const hpf = ctx.createBiquadFilter();
     hpf.type = "highpass";
-    hpf.frequency.value = 290;
-    hpf.Q.value = 0.75;
+    hpf.frequency.value = 260;
+    hpf.Q.value = 0.707;
+
+    const presence = ctx.createBiquadFilter();
+    presence.type = "peaking";
+    presence.frequency.value = 1700;
+    presence.Q.value = 1.1;
+    presence.gain.value = 4;
 
     const lpf = ctx.createBiquadFilter();
     lpf.type = "lowpass";
-    lpf.frequency.value = 3250;
-    lpf.Q.value = 0.85;
-
-    const preDrive = ctx.createGain();
-    preDrive.gain.value = 1.6;
-
-    const shaper = ctx.createWaveShaper();
-    const curve = new Float32Array(2048);
-    for (let i = 0; i < curve.length; i += 1) {
-      const x = (i * 2) / (curve.length - 1) - 1;
-      curve[i] = Math.tanh(2.2 * x);
-    }
-    shaper.curve = curve;
-    shaper.oversample = "4x";
-
-    const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -22;
-    compressor.knee.value = 18;
-    compressor.ratio.value = 7;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.11;
+    lpf.frequency.value = 3400;
+    lpf.Q.value = 0.707;
 
     const output = ctx.createGain();
-    output.gain.value = 1.0;
+    output.gain.value = SAFE_RADIO_CHAIN ? 1.35 : 1.0;
 
-    input.connect(hpf);
-    hpf.connect(lpf);
-    lpf.connect(preDrive);
-    preDrive.connect(shaper);
-    shaper.connect(compressor);
-    compressor.connect(output);
+    input.connect(inputTrim);
+    inputTrim.connect(hpf);
+    hpf.connect(presence);
+    presence.connect(lpf);
+    lpf.connect(output);
 
     return { input, output };
   };
@@ -783,11 +773,33 @@ export default function CommunityConsole() {
     pc.ontrack = (event) => {
       const stream = event.streams?.[0];
       if (!stream) return;
+      const track = stream.getAudioTracks()[0];
       voiceDebug("webrtc:ontrack", {
         targetSocketId,
         streamId: stream.id,
         audioTrackCount: stream.getAudioTracks().length,
+        trackId: track?.id ?? null,
+        trackEnabled: track?.enabled ?? null,
+        trackMuted: (track as any)?.muted ?? null,
+        trackReadyState: track?.readyState ?? null,
       });
+      if (track) {
+        track.onmute = () =>
+          voiceWarn("webrtc:remote-track-muted", {
+            targetSocketId,
+            trackId: track.id,
+          });
+        track.onunmute = () =>
+          voiceDebug("webrtc:remote-track-unmuted", {
+            targetSocketId,
+            trackId: track.id,
+          });
+        track.onended = () =>
+          voiceWarn("webrtc:remote-track-ended", {
+            targetSocketId,
+            trackId: track.id,
+          });
+      }
       void ensureRemoteAudioPipeline(targetSocketId, stream).then((audio) => {
         if (audio) {
           webrtcAudioRef.current[targetSocketId] = audio;
