@@ -384,7 +384,8 @@ export default function CommunityConsole() {
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const txFrameCtxRef = useRef<AudioContext | null>(null);
   const txFrameSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const txFrameProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const txFrameProcessorRef = useRef<AudioNode | null>(null);
+  const txFrameScriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const txFrameSilentGainRef = useRef<GainNode | null>(null);
   const rxFrameCtxRef = useRef<AudioContext | null>(null);
   const rxFrameDestinationRef =
@@ -782,6 +783,9 @@ export default function CommunityConsole() {
     try {
       txFrameProcessorRef.current?.disconnect();
     } catch {}
+    if (txFrameScriptProcessorRef.current) {
+      txFrameScriptProcessorRef.current.onaudioprocess = null;
+    }
     try {
       txFrameSourceRef.current?.disconnect();
     } catch {}
@@ -794,6 +798,7 @@ export default function CommunityConsole() {
       } catch {}
     }
     txFrameProcessorRef.current = null;
+    txFrameScriptProcessorRef.current = null;
     txFrameSourceRef.current = null;
     txFrameSilentGainRef.current = null;
     txFrameCtxRef.current = null;
@@ -807,28 +812,71 @@ export default function CommunityConsole() {
     if (!AudioCtx) return;
     const ctx: AudioContext = new AudioCtx();
     const source = ctx!.createMediaStreamSource(stream);
-    const processor = ctx!.createScriptProcessor(2048, 1, 1);
     const silentGain = ctx!.createGain();
     silentGain.gain.value = 0;
+    let processorNode: AudioNode | null = null;
 
-    processor.onaudioprocess = (event) => {
-      const activeChannels = activeVoiceChannelsRef.current;
-      if (!socket || !communityId || activeChannels.length === 0) return;
-      const input = event.inputBuffer.getChannelData(0);
-      if (!input || input.length === 0) return;
-      const frame = downsampleTo16kMono(input, event.inputBuffer.sampleRate);
-      if (!frame || frame.length === 0) return;
-      socket.emit("dispatch:voice-frame", {
-        communityId,
-        channelIds: activeChannels,
-        sampleRate: 16000,
-        frameBase64: encodeInt16ToBase64(frame),
-        timestamp: Date.now(),
-      });
-    };
+    if (ctx.audioWorklet && typeof AudioWorkletNode !== "undefined") {
+      try {
+        await ctx.audioWorklet.addModule(
+          new URL("../../audio/voiceTxWorklet.ts", import.meta.url),
+        );
+        const worklet = new AudioWorkletNode(ctx, "voice-tx-processor", {
+          numberOfInputs: 1,
+          numberOfOutputs: 1,
+          channelCount: 1,
+        });
+        worklet.port.onmessage = (event: MessageEvent) => {
+          const activeChannels = activeVoiceChannelsRef.current;
+          if (!socket || !communityId || activeChannels.length === 0) return;
+          const payload = event.data as
+            | { samples?: Float32Array; sampleRate?: number }
+            | undefined;
+          const input = payload?.samples;
+          if (!input || input.length === 0) return;
+          const frame = downsampleTo16kMono(
+            input,
+            payload?.sampleRate || ctx.sampleRate,
+          );
+          if (!frame || frame.length === 0) return;
+          socket.emit("dispatch:voice-frame", {
+            communityId,
+            channelIds: activeChannels,
+            sampleRate: 16000,
+            frameBase64: encodeInt16ToBase64(frame),
+            timestamp: Date.now(),
+          });
+        };
+        processorNode = worklet;
+      } catch (err) {
+        voiceWarn("voice-frame:audio-worklet-init-failed", err);
+      }
+    }
 
-    source.connect(processor);
-    processor.connect(silentGain);
+    if (!processorNode) {
+      const processor = ctx!.createScriptProcessor(2048, 1, 1);
+      processor.onaudioprocess = (event) => {
+        const activeChannels = activeVoiceChannelsRef.current;
+        if (!socket || !communityId || activeChannels.length === 0) return;
+        const input = event.inputBuffer.getChannelData(0);
+        if (!input || input.length === 0) return;
+        const frame = downsampleTo16kMono(input, event.inputBuffer.sampleRate);
+        if (!frame || frame.length === 0) return;
+        socket.emit("dispatch:voice-frame", {
+          communityId,
+          channelIds: activeChannels,
+          sampleRate: 16000,
+          frameBase64: encodeInt16ToBase64(frame),
+          timestamp: Date.now(),
+        });
+      };
+      processorNode = processor;
+      txFrameScriptProcessorRef.current = processor;
+      voiceWarn("voice-frame:using-scriptprocessor-fallback");
+    }
+
+    source.connect(processorNode);
+    processorNode.connect(silentGain);
     silentGain.connect(ctx!.destination);
     if (ctx!.state === "suspended") {
       try {
@@ -838,7 +886,7 @@ export default function CommunityConsole() {
 
     txFrameCtxRef.current = ctx;
     txFrameSourceRef.current = source;
-    txFrameProcessorRef.current = processor;
+    txFrameProcessorRef.current = processorNode;
     txFrameSilentGainRef.current = silentGain;
   };
 
@@ -2328,10 +2376,10 @@ export default function CommunityConsole() {
       legacyLog(
         "[RX Audio] Appending chunk size:",
         next.byteLength,
-        "queue remaining:",
-        pendingChunksRef.current.length,
-        "duration:",
-        audio?.duration ?? "unknown",
+        // "queue remaining:",
+        // pendingChunksRef.current.length,
+        // "duration:",
+        // audio?.duration ?? "unknown",
       );
       sb.appendBuffer(new Uint8Array(next));
       // Resume audio playback if paused
