@@ -62,7 +62,7 @@ type RadioEffectChain = {
 
 type RemoteAudioPipeline = {
   streamId: string;
-  source: MediaStreamAudioSourceNode;
+  source: AudioNode;
   outputGain: GainNode;
 };
 
@@ -374,6 +374,8 @@ export default function CommunityConsole() {
   const remoteAudioPipelinesRef = useRef<Record<string, RemoteAudioPipeline>>(
     {},
   );
+  const noPipelineLogAtRef = useRef<Record<string, number>>({});
+  const noPipelineFirstSeenAtRef = useRef<Record<string, number>>({});
   const activePttChannelsRef = useRef<string[]>([]);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const activeVoiceChannelsRef = useRef<string[]>([]);
@@ -528,6 +530,28 @@ export default function CommunityConsole() {
     return { input, output };
   };
 
+  const createRemoteInputSource = (
+    ctx: AudioContext,
+    stream: MediaStream,
+  ): { node: AudioNode; kind: "track" | "stream" } => {
+    const track = stream.getAudioTracks()[0];
+    const TrackSourceCtor = (window as any).MediaStreamTrackAudioSourceNode;
+    if (track && typeof TrackSourceCtor === "function") {
+      try {
+        const node = new TrackSourceCtor(ctx, {
+          mediaStreamTrack: track,
+        }) as AudioNode;
+        return { node, kind: "track" };
+      } catch (err) {
+        voiceWarn("remote-input:track-source-failed", err);
+      }
+    }
+    return {
+      node: ctx.createMediaStreamSource(stream),
+      kind: "stream",
+    };
+  };
+
   const teardownRemoteAudioPipeline = (socketId: string) => {
     const pipeline = remoteAudioPipelinesRef.current[socketId];
     if (!pipeline) return;
@@ -538,6 +562,8 @@ export default function CommunityConsole() {
       pipeline.outputGain.disconnect();
     } catch {}
     delete remoteAudioPipelinesRef.current[socketId];
+    delete noPipelineLogAtRef.current[socketId];
+    delete noPipelineFirstSeenAtRef.current[socketId];
     voiceDebug("remote-audio-pipeline:teardown", { socketId });
   };
 
@@ -554,13 +580,15 @@ export default function CommunityConsole() {
     if (!output) return null;
     const { ctx, destination } = output;
 
-    const source = ctx.createMediaStreamSource(stream);
+    const sourceResult = createRemoteInputSource(ctx, stream);
+    const source = sourceResult.node;
     const outputGain = ctx.createGain();
     outputGain.gain.value = 0;
     voiceDebug("remote-audio-pipeline:source-created", {
       socketId,
       streamId: stream.id,
       trackCount: stream.getAudioTracks().length,
+      sourceKind: sourceResult.kind,
     });
 
     if (ENFORCE_REQUIRED_RADIO_VOCODER) {
@@ -739,12 +767,25 @@ export default function CommunityConsole() {
   };
 
   const applyWebRtcAudioForSocket = useCallback((remoteSocketId: string) => {
+    const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
     const pipeline = remoteAudioPipelinesRef.current[remoteSocketId];
     if (!pipeline) {
-      voiceWarn("apply-gain:no-pipeline", { remoteSocketId });
+      if (txChannels.length === 0) {
+        delete noPipelineFirstSeenAtRef.current[remoteSocketId];
+        return;
+      }
+      const now = Date.now();
+      const firstSeen = noPipelineFirstSeenAtRef.current[remoteSocketId] ?? now;
+      noPipelineFirstSeenAtRef.current[remoteSocketId] = firstSeen;
+      const last = noPipelineLogAtRef.current[remoteSocketId] ?? 0;
+      if (now - firstSeen < 350) return;
+      if (now - last > 5000) {
+        noPipelineLogAtRef.current[remoteSocketId] = now;
+        voiceDebug("apply-gain:no-pipeline", { remoteSocketId });
+      }
       return;
     }
-    const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
+    delete noPipelineFirstSeenAtRef.current[remoteSocketId];
     const listened = txChannels.filter((id) => channelListening[id]);
 
     if (listened.length === 0) {
@@ -1547,6 +1588,26 @@ export default function CommunityConsole() {
           remoteTxChannelsRef.current[event.socketId] = remaining;
         }
         applyWebRtcAudioForSocket(event.socketId);
+        if (event.active && !remoteAudioPipelinesRef.current[event.socketId]) {
+          void (async () => {
+            try {
+              const pc = await ensureWebRtcPeer(event.socketId!);
+              if (!pc || pc.signalingState !== "stable") return;
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              socket?.emit("dispatch:webrtc-signal", {
+                communityId,
+                targetSocketId: event.socketId,
+                description: pc.localDescription,
+              });
+              voiceDebug("webrtc:renegotiate-on-no-pipeline", {
+                remoteSocketId: event.socketId,
+              });
+            } catch (err) {
+              voiceWarn("webrtc:renegotiate-on-no-pipeline-failed", err);
+            }
+          })();
+        }
       }
 
       setChannelsState(normalizedIds, "rx", event.active);
