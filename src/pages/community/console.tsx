@@ -403,6 +403,7 @@ export default function CommunityConsole() {
   );
   const incomingVoicePlayingRef = useRef(false);
   const hotCuePendingRef = useRef(false);
+  const seenVoiceFrameEventRef = useRef(false);
 
   const sessionRadioId = useMemo(() => {
     if (!community || !sessionUserId) return "";
@@ -1330,7 +1331,17 @@ export default function CommunityConsole() {
     });
 
     await startVoiceFrameCapture(stream);
-    if (USE_SERVER_VOICE_FRAMES) return;
+    if (USE_SERVER_VOICE_FRAMES && seenVoiceFrameEventRef.current) {
+      debugLog("startVoiceCapture:frame-mode-only", {
+        reason: "voice-frame-events-observed",
+      });
+      return;
+    }
+    if (USE_SERVER_VOICE_FRAMES) {
+      voiceWarn("startVoiceCapture:frame-fallback-to-webrtc", {
+        reason: "no-voice-frame-events-observed-yet",
+      });
+    }
 
     try {
       const targets = Object.entries(peerMapRef.current)
@@ -2146,6 +2157,7 @@ export default function CommunityConsole() {
       )
         return;
       if (event.socketId && event.socketId === socket.id) return;
+      seenVoiceFrameEventRef.current = true;
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
         .map(([id]) => id);
