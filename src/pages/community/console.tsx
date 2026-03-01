@@ -478,7 +478,9 @@ export default function CommunityConsole() {
         await ctx.resume();
       } catch {}
     }
-    outputAudio.play().catch(() => {});
+    outputAudio.play().catch((err) => {
+      voiceWarn("processed-output:play-failed", err);
+    });
     voiceDebug("processed-output:context-ready", {
       ctxState: ctx.state,
       sinkId: sinkId || null,
@@ -488,6 +490,8 @@ export default function CommunityConsole() {
 
   const createRadioEffectChain = (ctx: AudioContext): RadioEffectChain => {
     const input = ctx.createGain();
+    const dryMix = ctx.createGain();
+    dryMix.gain.value = 0.55;
     const inputTrim = ctx.createGain();
     inputTrim.gain.value = 1.2;
 
@@ -507,14 +511,19 @@ export default function CommunityConsole() {
     lpf.frequency.value = 3400;
     lpf.Q.value = 0.707;
 
+    const processedMix = ctx.createGain();
+    processedMix.gain.value = 0.9;
     const output = ctx.createGain();
     output.gain.value = SAFE_RADIO_CHAIN ? 1.35 : 1.0;
 
+    input.connect(dryMix);
+    dryMix.connect(output);
     input.connect(inputTrim);
     inputTrim.connect(hpf);
     hpf.connect(presence);
     presence.connect(lpf);
-    lpf.connect(output);
+    lpf.connect(processedMix);
+    processedMix.connect(output);
 
     return { input, output };
   };
