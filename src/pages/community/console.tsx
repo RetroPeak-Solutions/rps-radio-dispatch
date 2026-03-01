@@ -1936,6 +1936,9 @@ export default function CommunityConsole() {
                                 onPointerDown={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
+                                  if (settings?.txAudio.playStart) {
+                                    void playSfx(AUDIO_SFX.talkActive, 0.5, consoleSettings.outputDeviceId);
+                                  }
                                   void transmitPtt(
                                     true,
                                     [ch.id],
@@ -1946,6 +1949,9 @@ export default function CommunityConsole() {
                                 onPointerUp={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
+                                  if (settings?.txAudio.playEnd) {
+                                    void playSfx(AUDIO_SFX.talkEnd, 0.5, consoleSettings.outputDeviceId);
+                                  }
                                   void transmitPtt(
                                     false,
                                     [ch.id],
@@ -1955,6 +1961,9 @@ export default function CommunityConsole() {
                                 onPointerCancel={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
+                                  if (settings?.txAudio.playEnd) {
+                                    void playSfx(AUDIO_SFX.talkEnd, 0.5, consoleSettings.outputDeviceId);
+                                  }
                                   void transmitPtt(
                                     false,
                                     [ch.id],
