@@ -966,7 +966,21 @@ export default function CommunityConsole() {
 
     const source = ctx!.createBufferSource();
     source.buffer = buffer;
-    source.connect(gainNode);
+    const inputGain = ctx!.createGain();
+    inputGain.gain.value = 1;
+    source.connect(inputGain);
+    if (ENFORCE_REQUIRED_RADIO_VOCODER) {
+      try {
+        const chain = createRadioEffectChain(ctx);
+        inputGain.connect(chain.input);
+        chain.output.connect(gainNode);
+      } catch (err) {
+        voiceWarn("voice-frame:vocoder-chain-failed-fallback-dry", err);
+        inputGain.connect(gainNode);
+      }
+    } else {
+      inputGain.connect(gainNode);
+    }
     gainNode.connect(destination);
 
     const startAt = Math.max(ctx!.currentTime + 0.01, rxFrameNextPlayTimeRef.current);
@@ -975,6 +989,9 @@ export default function CommunityConsole() {
     source.onended = () => {
       try {
         source.disconnect();
+      } catch {}
+      try {
+        inputGain.disconnect();
       } catch {}
       try {
         gainNode.disconnect();
@@ -2120,6 +2137,7 @@ export default function CommunityConsole() {
       sampleRate?: number;
       socketId?: string;
     }) => {
+      console.log('[VoiceFrame] Incoming Voice Frame:', event);
       if (
         !event?.frameBase64 ||
         !Array.isArray(event.channelIds) ||
