@@ -943,6 +943,7 @@ export default function CommunityConsole() {
     sampleRate: number,
     channelIds: string[],
   ) => {
+    console.log('[VoiceFrame] Incoming Voice Frame:', frameBase64);
     const listened = channelIds.filter((id) => channelListening[id]);
     if (listened.length === 0) return;
     const out = await ensureRxFrameOutputReady();
