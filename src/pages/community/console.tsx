@@ -779,15 +779,7 @@ export default function CommunityConsole() {
       return;
     }
 
-    const listened = txChannels.filter((id) => channelListening[id]);
-    const fallbackListened =
-      listened.length > 0
-        ? listened
-        : Object.entries(channelListening)
-            .filter(([, on]) => on)
-            .map(([id]) => id);
-
-    if (fallbackListened.length === 0) {
+    if (txChannels.length === 0) {
       audio.volume = 0;
       voiceDebug("apply-gain:muted", {
         remoteSocketId,
@@ -796,7 +788,24 @@ export default function CommunityConsole() {
       return;
     }
 
-    const perChannel = fallbackListened.map((id) => {
+    const listened = txChannels.filter((id) => channelListening[id]);
+    const channelsForGain =
+      listened.length > 0
+        ? listened
+        : Object.entries(channelListening)
+            .filter(([, on]) => on)
+            .map(([id]) => id);
+
+    if (channelsForGain.length === 0) {
+      audio.volume = 0;
+      voiceDebug("apply-gain:muted-no-listened", {
+        remoteSocketId,
+        txChannels,
+      });
+      return;
+    }
+
+    const perChannel = channelsForGain.map((id) => {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
@@ -804,7 +813,7 @@ export default function CommunityConsole() {
     audio.volume = volume;
     voiceDebug("apply-gain:active", {
       remoteSocketId,
-      listened: fallbackListened,
+      listened: channelsForGain,
       volume,
     });
   }, [channelListening, volumes]);
