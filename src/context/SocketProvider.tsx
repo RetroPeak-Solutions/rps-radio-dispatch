@@ -28,7 +28,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, url })
       // Do NOT force websocket unless you control the server fully
       // host: url,
       autoConnect: true,
-      transports: ["polling"], // allow fallback to polling
+      transports: ["websocket", "polling"],
     });
 
     // setSocket(socketClient);
