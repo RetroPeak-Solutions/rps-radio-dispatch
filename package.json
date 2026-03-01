@@ -70,8 +70,7 @@
       "allowElevation": false,
       "runAfterFinish": true,
       "oneClick": false
-    },
-    // "afterSign": "scripts/notarize.cjs"
+    }
   },
   "scripts": {
     "start": "electron .",
