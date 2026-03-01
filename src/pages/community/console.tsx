@@ -1841,12 +1841,33 @@ export default function CommunityConsole() {
 
       try {
         if (event.description) {
-          await pc.setRemoteDescription(event.description);
+          const descType = event.description.type;
+          const signalingState = pc.signalingState;
+          let remoteDescriptionApplied = false;
+
+          if (descType === "answer" && signalingState !== "have-local-offer") {
+            voiceWarn("webrtc:ignore-stale-answer", {
+              fromSocketId: event.fromSocketId,
+              signalingState,
+            });
+          } else if (descType === "offer" && signalingState !== "stable") {
+            voiceWarn("webrtc:ignore-offer-nonstable", {
+              fromSocketId: event.fromSocketId,
+              signalingState,
+            });
+          } else {
+            await pc.setRemoteDescription(event.description);
+            remoteDescriptionApplied = true;
+          }
           debugLog("onWebRtcSignal:setRemoteDescription:ok", {
             fromSocketId: event.fromSocketId,
             type: event.description.type,
+            applied: remoteDescriptionApplied,
           });
-          if (event.description.type === "offer") {
+          if (
+            event.description.type === "offer" &&
+            pc.signalingState === "have-remote-offer"
+          ) {
             const stream = await ensureMicStream();
             if (stream) {
               await syncPeerAudioSender(pc, stream);
