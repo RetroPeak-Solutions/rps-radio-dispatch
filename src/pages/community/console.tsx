@@ -615,36 +615,14 @@ export default function CommunityConsole() {
   };
 
   const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
-    const AudioCtx =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx: AudioContext = new AudioCtx();
-    const gain = ctx.createGain();
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.01);
-
-    const osc = ctx.createOscillator();
-    osc.type = kind === "denied" ? "square" : "sine";
-    osc.connect(gain);
-    osc.start();
-
-    if (kind === "start") {
-    } else if (kind === "end") {
-    } else {
-      void playSfx(AUDIO_SFX.talkDenied, 0.9, consoleSettings.outputDeviceId);
-    }
-
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      ctx.currentTime + (kind === "denied" ? 0.14 : 0.09),
-    );
-    osc.stop(ctx.currentTime + (kind === "denied" ? 0.14 : 0.09));
-    setTimeout(() => {
-      try {
-        ctx.close();
-      } catch {}
-    }, 220);
+    const src =
+      kind === "start"
+        ? AUDIO_SFX.talkActive
+        : kind === "end"
+          ? AUDIO_SFX.talkEnd
+          : AUDIO_SFX.talkDenied;
+    const volume = kind === "denied" ? 0.9 : 0.6;
+    void playSfx(src, volume, consoleSettings.outputDeviceId);
   };
 
   const blobToBase64 = async (blob: Blob): Promise<string> => {
@@ -1413,6 +1391,7 @@ export default function CommunityConsole() {
             tone.durationB,
             () => resolve(),
             volumeDb,
+            consoleSettings.outputDeviceId,
           );
         });
       }
@@ -2240,6 +2219,7 @@ export default function CommunityConsole() {
     };
 
     void setSink(rxProcessedAudioRef.current);
+    void setSink(rxMonitorAudioRef.current);
     Object.values(webrtcAudioRef.current).forEach((audio) => {
       void setSink(audio);
     });
