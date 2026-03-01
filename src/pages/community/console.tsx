@@ -465,7 +465,7 @@ export default function CommunityConsole() {
     const ctx = ensureSharedAudioContext();
     if (!ctx) return null;
     if (!processedMixDestinationRef.current) {
-      processedMixDestinationRef.current = ctx.createMediaStreamDestination();
+      processedMixDestinationRef.current = ctx!.createMediaStreamDestination();
       voiceDebug("processed-output:destination-created");
     }
 
@@ -487,54 +487,54 @@ export default function CommunityConsole() {
       } catch {}
     }
 
-    if (ctx.state === "suspended") {
+    if (ctx!.state === "suspended") {
       try {
-        await ctx.resume();
+        await ctx!.resume();
       } catch {}
     }
     outputAudio.play().catch((err) => {
       voiceWarn("processed-output:play-failed", err);
     });
     voiceDebug("processed-output:context-ready", {
-      ctxState: ctx.state,
+      ctxState: ctx!.state,
       sinkId: sinkId || null,
     });
     return { ctx, destination: processedMixDestinationRef.current };
   };
 
   const createRadioEffectChain = (ctx: AudioContext): RadioEffectChain => {
-    const input = ctx.createGain();
-    const dryMix = ctx.createGain();
+    const input = ctx!.createGain();
+    const dryMix = ctx!.createGain();
     dryMix.gain.value = 0.35;
-    const inputTrim = ctx.createGain();
+    const inputTrim = ctx!.createGain();
     inputTrim.gain.value = 1.15;
 
-    const hpf = ctx.createBiquadFilter();
+    const hpf = ctx!.createBiquadFilter();
     hpf.type = "highpass";
     hpf.frequency.value = 320;
     hpf.Q.value = 0.8;
 
-    const presence = ctx.createBiquadFilter();
+    const presence = ctx!.createBiquadFilter();
     presence.type = "peaking";
     presence.frequency.value = 1700;
     presence.Q.value = 1.1;
     presence.gain.value = 3.5;
 
-    const lpf = ctx.createBiquadFilter();
+    const lpf = ctx!.createBiquadFilter();
     lpf.type = "lowpass";
     lpf.frequency.value = 2900;
     lpf.Q.value = 0.8;
 
-    const compressor = ctx.createDynamicsCompressor();
+    const compressor = ctx!.createDynamicsCompressor();
     compressor.threshold.value = -22;
     compressor.knee.value = 18;
     compressor.ratio.value = 6;
     compressor.attack.value = 0.004;
     compressor.release.value = 0.12;
 
-    const processedMix = ctx.createGain();
+    const processedMix = ctx!.createGain();
     processedMix.gain.value = 0.9;
-    const output = ctx.createGain();
+    const output = ctx!.createGain();
     output.gain.value = SAFE_RADIO_CHAIN ? 1.2 : 1.0;
 
     input.connect(dryMix);
@@ -555,7 +555,7 @@ export default function CommunityConsole() {
     stream: MediaStream,
   ): { node: AudioNode; kind: "track" | "stream" } => {
     return {
-      node: ctx.createMediaStreamSource(stream),
+      node: ctx!.createMediaStreamSource(stream),
       kind: "stream",
     };
   };
@@ -596,11 +596,11 @@ export default function CommunityConsole() {
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return null;
     const ctx: AudioContext = new AudioCtx();
-    const destination = ctx.createMediaStreamDestination();
+    const destination = ctx!.createMediaStreamDestination();
 
     const sourceResult = createRemoteInputSource(ctx, stream);
     const source = sourceResult.node;
-    const outputGain = ctx.createGain();
+    const outputGain = ctx!.createGain();
     outputGain.gain.value = 0;
     voiceDebug("remote-audio-pipeline:source-created", {
       socketId,
@@ -634,21 +634,21 @@ export default function CommunityConsole() {
         await (outputAudio as any).setSinkId(sinkId);
       } catch {}
     }
-    if (ctx.state === "suspended") {
+    if (ctx!.state === "suspended") {
       try {
-        await ctx.resume();
+        await ctx!.resume();
       } catch {}
     }
-    if (ctx.state !== "running") {
+    if (ctx!.state !== "running") {
       voiceWarn("remote-audio-pipeline:context-not-running", {
         socketId,
-        state: ctx.state,
+        state: ctx!.state,
       });
       try {
         outputAudio.srcObject = null;
       } catch {}
       try {
-        void ctx.close();
+        void ctx!.close();
       } catch {}
       return null;
     }
@@ -663,7 +663,7 @@ export default function CommunityConsole() {
         outputAudio.srcObject = null;
       } catch {}
       try {
-        void ctx.close();
+        void ctx!.close();
       } catch {}
       return null;
     }
@@ -806,9 +806,9 @@ export default function CommunityConsole() {
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
     const ctx: AudioContext = new AudioCtx();
-    const source = ctx.createMediaStreamSource(stream);
-    const processor = ctx.createScriptProcessor(2048, 1, 1);
-    const silentGain = ctx.createGain();
+    const source = ctx!.createMediaStreamSource(stream);
+    const processor = ctx!.createScriptProcessor(2048, 1, 1);
+    const silentGain = ctx!.createGain();
     silentGain.gain.value = 0;
 
     processor.onaudioprocess = (event) => {
@@ -829,10 +829,10 @@ export default function CommunityConsole() {
 
     source.connect(processor);
     processor.connect(silentGain);
-    silentGain.connect(ctx.destination);
-    if (ctx.state === "suspended") {
+    silentGain.connect(ctx!.destination);
+    if (ctx!.state === "suspended") {
       try {
-        await ctx.resume();
+        await ctx!.resume();
       } catch {}
     }
 
@@ -852,7 +852,7 @@ export default function CommunityConsole() {
     }
     const ctx = rxFrameCtxRef.current;
     if (!rxFrameDestinationRef.current) {
-      rxFrameDestinationRef.current = ctx.createMediaStreamDestination();
+      rxFrameDestinationRef.current = ctx!.createMediaStreamDestination();
     }
     const outputAudio = rxFrameAudioRef.current;
     if (!outputAudio) return null;
@@ -867,9 +867,9 @@ export default function CommunityConsole() {
         await (outputAudio as any).setSinkId(sinkId);
       } catch {}
     }
-    if (ctx.state === "suspended") {
+    if (ctx!.state === "suspended") {
       try {
-        await ctx.resume();
+        await ctx!.resume();
       } catch {}
     }
     outputAudio.play().catch(() => {});
@@ -889,25 +889,25 @@ export default function CommunityConsole() {
     const frame = decodeBase64ToInt16(frameBase64);
     if (!frame || frame.length === 0) return;
 
-    const buffer = ctx.createBuffer(1, frame.length, sampleRate || 16000);
+    const buffer = ctx!.createBuffer(1, frame.length, sampleRate || 16000);
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < frame.length; i += 1) {
       channel[i] = frame[i] / 32768;
     }
 
-    const gainNode = ctx.createGain();
+    const gainNode = ctx!.createGain();
     const perChannel = listened.map((id) => {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
     gainNode.gain.value = Math.max(...perChannel) / 100;
 
-    const source = ctx.createBufferSource();
+    const source = ctx!.createBufferSource();
     source.buffer = buffer;
     source.connect(gainNode);
     gainNode.connect(destination);
 
-    const startAt = Math.max(ctx.currentTime + 0.01, rxFrameNextPlayTimeRef.current);
+    const startAt = Math.max(ctx!.currentTime + 0.01, rxFrameNextPlayTimeRef.current);
     source.start(startAt);
     rxFrameNextPlayTimeRef.current = startAt + buffer.duration;
     source.onended = () => {
@@ -942,8 +942,8 @@ export default function CommunityConsole() {
     legacyLog(
       "[RX Voice] Audio element created, src:",
       next.src.substring(0, 50),
-      "volume:",
-      audio.volume,
+      // "volume:",
+      // audio.volume,
     );
 
     const finish = () => {
@@ -1015,8 +1015,8 @@ export default function CommunityConsole() {
     legacyLog(
       "[RX Voice] Enqueued blob, volume:",
       volume,
-      "queue length:",
-      incomingVoiceQueueRef.current.length + 1,
+      // "queue length:",
+      // incomingVoiceQueueRef.current.length + 1,
     );
 
     incomingVoiceQueueRef.current.push({ src, volume });
@@ -2357,7 +2357,7 @@ export default function CommunityConsole() {
 
     if (!chunkVoiceSourceRef.current) {
       try {
-        chunkVoiceSourceRef.current = ctx.createMediaElementSource(inputAudio);
+        chunkVoiceSourceRef.current = ctx!.createMediaElementSource(inputAudio);
         voiceDebug("chunk-voice:media-element-source-created");
       } catch (err) {
         voiceWarn("chunk-voice:createMediaElementSource:failed", err);
