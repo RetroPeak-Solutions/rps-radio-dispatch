@@ -748,8 +748,11 @@ export default function CommunityConsole() {
       legacyLog("[RX Voice] No listened channels for this chunk");
       return;
     }
-    const perChannelVolumes = listened.map((id) => volumes[id] ?? 50);
-    const volume = Math.max(...perChannelVolumes, 50) / 100;
+    const perChannelVolumes = listened.map((id) => {
+      const value = volumes[id] ?? 50;
+      return Math.max(0, Math.min(100, value));
+    });
+    const volume = Math.max(...perChannelVolumes) / 100;
     const blob = decodeBase64ToBlob(
       chunkBase64,
       mimeType || "audio/webm;codecs=opus",
@@ -797,8 +800,11 @@ export default function CommunityConsole() {
       return;
     }
 
-    const perChannel = listened.map((id) => volumes[id] ?? 50);
-    const volume = Math.max(...perChannel, 50) / 100;
+    const perChannel = listened.map((id) => {
+      const value = volumes[id] ?? 50;
+      return Math.max(0, Math.min(100, value));
+    });
+    const volume = Math.max(...perChannel) / 100;
     pipeline.outputGain.gain.value = volume;
     voiceDebug("apply-gain:active", {
       remoteSocketId,
@@ -1747,14 +1753,14 @@ export default function CommunityConsole() {
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
       legacyLog("[RX Voice] Received chunk, size:", event.chunkBase64.length);
-      const listeningChannelIds = Object.entries(channelListening)
-        .filter(([, listening]) => listening)
-        .map(([id]) => id);
-      legacyLog("[RX Voice] Listening channels:", listeningChannelIds);
+      const normalizedChannelIds = Array.from(
+        new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
+      );
+      legacyLog("[RX Voice] Event channels:", normalizedChannelIds);
       playIncomingChunk(
         event.chunkBase64,
         event.mimeType || "audio/webm;codecs=opus",
-        listeningChannelIds,
+        normalizedChannelIds,
       );
     };
 
