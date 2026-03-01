@@ -55,6 +55,17 @@ type TonePacket = {
   durationB: number;
 };
 
+type RadioEffectChain = {
+  input: GainNode;
+  output: GainNode;
+};
+
+type RemoteAudioPipeline = {
+  streamId: string;
+  source: MediaStreamAudioSourceNode;
+  outputGain: GainNode;
+};
+
 const CARD_WIDTH = 350;
 const CARD_HEIGHT = 150;
 const CARD_SPACING = 16;
@@ -69,7 +80,10 @@ const DEFAULT_CONSOLE_SETTINGS: ConsoleSettingsState = {
   outputDeviceId: "",
 };
 const SHOW_PTT_DEBUG = false;
-const CLIENT_DEBUG = true;
+const CLIENT_DEBUG = false;
+const VOICE_PATH_DEBUG = true;
+// TODO(owner/admin toggle): gate this by community role permissions when you are ready.
+const ENFORCE_REQUIRED_RADIO_VOCODER = true;
 
 const EMPTY_SLOT = { id: "", key: [] as string[] };
 const DEFAULT_COMMUNITY_PTT_CHANNELS: CommunityPttChannels = {
@@ -106,6 +120,26 @@ function debugWarn(message: string, data?: unknown) {
     return;
   }
   console.warn(`[DispatchDebug ${ts}] ${message}`);
+}
+
+function voiceDebug(message: string, data?: unknown) {
+  if (!VOICE_PATH_DEBUG) return;
+  const ts = new Date().toISOString();
+  if (data !== undefined) {
+    console.log(`[VoicePath ${ts}] ${message}`, data);
+    return;
+  }
+  console.log(`[VoicePath ${ts}] ${message}`);
+}
+
+function voiceWarn(message: string, data?: unknown) {
+  if (!VOICE_PATH_DEBUG) return;
+  const ts = new Date().toISOString();
+  if (data !== undefined) {
+    console.warn(`[VoicePath ${ts}] ${message}`, data);
+    return;
+  }
+  console.warn(`[VoicePath ${ts}] ${message}`);
 }
 
 function normalizeSettings(settings: AppSettings | null): AppSettings {
@@ -322,6 +356,13 @@ export default function CommunityConsole() {
   const micStreamRef = useRef<MediaStream | null>(null);
   const micInputDeviceIdRef = useRef<string>("");
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
+  const rxProcessedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const sharedAudioCtxRef = useRef<AudioContext | null>(null);
+  const processedMixDestinationRef =
+    useRef<MediaStreamAudioDestinationNode | null>(null);
+  const remoteAudioPipelinesRef = useRef<Record<string, RemoteAudioPipeline>>(
+    {},
+  );
   const activePttChannelsRef = useRef<string[]>([]);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
   const activeVoiceChannelsRef = useRef<string[]>([]);
@@ -383,6 +424,157 @@ export default function CommunityConsole() {
       enabled: audioTrack.enabled,
     });
     return true;
+  };
+
+  const ensureSharedAudioContext = () => {
+    if (sharedAudioCtxRef.current) return sharedAudioCtxRef.current;
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    sharedAudioCtxRef.current = new AudioCtx();
+    debugLog("audio-context:created");
+    return sharedAudioCtxRef.current;
+  };
+
+  const ensureProcessedOutputReady = async () => {
+    const ctx = ensureSharedAudioContext();
+    if (!ctx) return null;
+    if (!processedMixDestinationRef.current) {
+      processedMixDestinationRef.current = ctx.createMediaStreamDestination();
+      voiceDebug("processed-output:destination-created");
+    }
+
+    const outputAudio = rxProcessedAudioRef.current;
+    if (!outputAudio) return null;
+
+    if (outputAudio.srcObject !== processedMixDestinationRef.current.stream) {
+      outputAudio.srcObject = processedMixDestinationRef.current.stream;
+      voiceDebug("processed-output:audio-srcObject-attached");
+    }
+    outputAudio.autoplay = true;
+    outputAudio.muted = false;
+
+    const sinkId = consoleSettings.outputDeviceId;
+    if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
+      try {
+        await (outputAudio as any).setSinkId(sinkId);
+        voiceDebug("processed-output:setSinkId:ok", { sinkId });
+      } catch {}
+    }
+
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {}
+    }
+    outputAudio.play().catch(() => {});
+    voiceDebug("processed-output:play-called", {
+      ctxState: ctx.state,
+      sinkId: sinkId || null,
+    });
+    return processedMixDestinationRef.current;
+  };
+
+  const createRadioEffectChain = (ctx: AudioContext): RadioEffectChain => {
+    const input = ctx.createGain();
+    const hpf = ctx.createBiquadFilter();
+    hpf.type = "highpass";
+    hpf.frequency.value = 290;
+    hpf.Q.value = 0.75;
+
+    const lpf = ctx.createBiquadFilter();
+    lpf.type = "lowpass";
+    lpf.frequency.value = 3250;
+    lpf.Q.value = 0.85;
+
+    const preDrive = ctx.createGain();
+    preDrive.gain.value = 1.6;
+
+    const shaper = ctx.createWaveShaper();
+    const curve = new Float32Array(2048);
+    for (let i = 0; i < curve.length; i += 1) {
+      const x = (i * 2) / (curve.length - 1) - 1;
+      curve[i] = Math.tanh(2.2 * x);
+    }
+    shaper.curve = curve;
+    shaper.oversample = "4x";
+
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.value = -22;
+    compressor.knee.value = 18;
+    compressor.ratio.value = 7;
+    compressor.attack.value = 0.003;
+    compressor.release.value = 0.11;
+
+    const output = ctx.createGain();
+    output.gain.value = 1.0;
+
+    input.connect(hpf);
+    hpf.connect(lpf);
+    lpf.connect(preDrive);
+    preDrive.connect(shaper);
+    shaper.connect(compressor);
+    compressor.connect(output);
+
+    return { input, output };
+  };
+
+  const teardownRemoteAudioPipeline = (socketId: string) => {
+    const pipeline = remoteAudioPipelinesRef.current[socketId];
+    if (!pipeline) return;
+    try {
+      pipeline.source.disconnect();
+    } catch {}
+    try {
+      pipeline.outputGain.disconnect();
+    } catch {}
+    delete remoteAudioPipelinesRef.current[socketId];
+    voiceDebug("remote-audio-pipeline:teardown", { socketId });
+  };
+
+  const ensureRemoteAudioPipeline = async (
+    socketId: string,
+    stream: MediaStream,
+  ) => {
+    const existing = remoteAudioPipelinesRef.current[socketId];
+    if (existing && existing.streamId === stream.id)
+      return rxProcessedAudioRef.current;
+    if (existing) teardownRemoteAudioPipeline(socketId);
+
+    const destination = await ensureProcessedOutputReady();
+    const ctx = ensureSharedAudioContext();
+    if (!ctx || !destination) return null;
+
+    const source = ctx.createMediaStreamSource(stream);
+    const outputGain = ctx.createGain();
+    outputGain.gain.value = 0;
+    voiceDebug("remote-audio-pipeline:source-created", {
+      socketId,
+      streamId: stream.id,
+      trackCount: stream.getAudioTracks().length,
+    });
+
+    if (ENFORCE_REQUIRED_RADIO_VOCODER) {
+      const chain = createRadioEffectChain(ctx);
+      source.connect(chain.input);
+      chain.output.connect(outputGain);
+    } else {
+      source.connect(outputGain);
+    }
+    outputGain.connect(destination);
+
+    remoteAudioPipelinesRef.current[socketId] = {
+      streamId: stream.id,
+      source,
+      outputGain,
+    };
+
+    voiceDebug("remote-audio-pipeline:created", {
+      socketId,
+      streamId: stream.id,
+      enforcedVocoder: ENFORCE_REQUIRED_RADIO_VOCODER,
+    });
+    return rxProcessedAudioRef.current;
   };
 
   const playPttIndicatorTone = (kind: "start" | "end" | "denied") => {
@@ -538,15 +730,17 @@ export default function CommunityConsole() {
   };
 
   const applyWebRtcAudioForSocket = useCallback((remoteSocketId: string) => {
-    const audio = webrtcAudioRef.current[remoteSocketId];
-    if (!audio) return;
+    const pipeline = remoteAudioPipelinesRef.current[remoteSocketId];
+    if (!pipeline) {
+      voiceWarn("apply-gain:no-pipeline", { remoteSocketId });
+      return;
+    }
     const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
     const listened = txChannels.filter((id) => channelListening[id]);
 
     if (listened.length === 0) {
-      audio.muted = true;
-      audio.volume = 0;
-      debugLog("applyWebRtcAudioForSocket:muted", {
+      pipeline.outputGain.gain.value = 0;
+      voiceDebug("apply-gain:muted", {
         remoteSocketId,
         txChannels,
       });
@@ -555,9 +749,8 @@ export default function CommunityConsole() {
 
     const perChannel = listened.map((id) => volumes[id] ?? 50);
     const volume = Math.max(...perChannel, 50) / 100;
-    audio.muted = false;
-    audio.volume = volume;
-    debugLog("applyWebRtcAudioForSocket:active", {
+    pipeline.outputGain.gain.value = volume;
+    voiceDebug("apply-gain:active", {
       remoteSocketId,
       listened,
       volume,
@@ -607,26 +800,17 @@ export default function CommunityConsole() {
     pc.ontrack = (event) => {
       const stream = event.streams?.[0];
       if (!stream) return;
-      debugLog("ensureWebRtcPeer:ontrack", {
+      voiceDebug("webrtc:ontrack", {
         targetSocketId,
         streamId: stream.id,
         audioTrackCount: stream.getAudioTracks().length,
       });
-      let audio = webrtcAudioRef.current[targetSocketId];
-      if (!audio) {
-        audio = new Audio();
-        audio.autoplay = true;
-        audio.muted = true;
-        audio.volume = 0;
+      void ensureRemoteAudioPipeline(targetSocketId, stream).then((audio) => {
+        if (!audio) return;
         webrtcAudioRef.current[targetSocketId] = audio;
-      }
-      audio.srcObject = stream as any;
-      const sinkId = consoleSettings.outputDeviceId;
-      if (sinkId && typeof (audio as any).setSinkId === "function") {
-        (audio as any).setSinkId(sinkId).catch(() => {});
-      }
-      applyWebRtcAudioForSocket(targetSocketId);
-      audio.play().catch(() => {});
+        applyWebRtcAudioForSocket(targetSocketId);
+        voiceDebug("webrtc:ontrack:pipeline-ready", { targetSocketId });
+      });
     };
 
     pc.onconnectionstatechange = () => {
@@ -645,6 +829,7 @@ export default function CommunityConsole() {
           } catch {}
           delete webrtcAudioRef.current[targetSocketId];
         }
+        teardownRemoteAudioPipeline(targetSocketId);
         delete remoteTxChannelsRef.current[targetSocketId];
       }
     };
@@ -1272,6 +1457,7 @@ export default function CommunityConsole() {
           } catch {}
           delete webrtcAudioRef.current[event.socketId];
         }
+        teardownRemoteAudioPipeline(event.socketId);
         delete remoteTxChannelsRef.current[event.socketId];
         delete peerMapRef.current[event.socketId];
         setPeersState(
@@ -1610,6 +1796,7 @@ export default function CommunityConsole() {
           webrtcAudioRef.current[socketId].srcObject = null;
         } catch {}
         delete webrtcAudioRef.current[socketId];
+        teardownRemoteAudioPipeline(socketId);
       });
       Object.keys(remoteTxChannelsRef.current).forEach((socketId) => {
         delete remoteTxChannelsRef.current[socketId];
@@ -1622,6 +1809,10 @@ export default function CommunityConsole() {
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const chunkVoiceSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const chunkVoiceDestinationRef =
+    useRef<MediaStreamAudioDestinationNode | null>(null);
+  const chunkVoiceProcessingReadyRef = useRef(false);
 
   // WebRTC refs
   const peerMapRef = useRef<Record<string, { peerId: string; channelIds: string[] }>>({});
@@ -1677,6 +1868,41 @@ export default function CommunityConsole() {
     }
   };
 
+  const ensureChunkVoiceProcessing = async (inputAudio: HTMLAudioElement) => {
+    if (chunkVoiceProcessingReadyRef.current) return;
+    const destination = await ensureProcessedOutputReady();
+    const ctx = ensureSharedAudioContext();
+    if (!ctx || !destination) return;
+
+    if (!chunkVoiceSourceRef.current) {
+      try {
+        chunkVoiceSourceRef.current = ctx.createMediaElementSource(inputAudio);
+        voiceDebug("chunk-voice:media-element-source-created");
+      } catch (err) {
+        voiceWarn("chunk-voice:createMediaElementSource:failed", err);
+      }
+    }
+    if (!chunkVoiceSourceRef.current) return;
+
+    if (!chunkVoiceDestinationRef.current) {
+      chunkVoiceDestinationRef.current = destination;
+      voiceDebug("chunk-voice:destination-attached");
+    }
+
+    if (ENFORCE_REQUIRED_RADIO_VOCODER) {
+      const chain = createRadioEffectChain(ctx);
+      chunkVoiceSourceRef.current.connect(chain.input);
+      chain.output.connect(destination);
+    } else {
+      chunkVoiceSourceRef.current.connect(destination);
+    }
+
+    chunkVoiceProcessingReadyRef.current = true;
+    voiceDebug("chunk-voice:processing-ready", {
+      enforcedVocoder: ENFORCE_REQUIRED_RADIO_VOCODER,
+    });
+  };
+
   const initIncomingAudio = () => {
     if (
       audioElementRef.current &&
@@ -1704,7 +1930,7 @@ export default function CommunityConsole() {
       domAudio ? "DOM audio element" : "new Audio()",
     );
     audio.autoplay = true;
-    audio.muted = false;
+    audio.muted = true;
 
     audioElementRef.current = audio;
 
@@ -1713,6 +1939,7 @@ export default function CommunityConsole() {
 
     audio.src = URL.createObjectURL(mediaSource);
     console.log("[RX Audio] MediaSource created and attached");
+    void ensureChunkVoiceProcessing(audio);
 
     mediaSource.addEventListener("sourceopen", () => {
       console.log("[RX Audio] sourceopen fired");
@@ -1823,11 +2050,23 @@ export default function CommunityConsole() {
   };
 
   useEffect(() => {
-    const audioEl = rxMonitorAudioRef.current as any;
-    if (!audioEl || !consoleSettings.outputDeviceId) return;
-    if (typeof audioEl.setSinkId !== "function") return;
-    audioEl.setSinkId(consoleSettings.outputDeviceId).catch((err: unknown) => {
-      console.error("[Audio] Failed to set output device", err);
+    const sinkId = consoleSettings.outputDeviceId;
+    if (!sinkId) return;
+
+    const setSink = async (audioEl: HTMLAudioElement | null) => {
+      const anyAudio = audioEl as any;
+      if (!anyAudio || typeof anyAudio.setSinkId !== "function") return;
+      try {
+        await anyAudio.setSinkId(sinkId);
+        voiceDebug("setSinkId:ok", { sinkId });
+      } catch (err) {
+        console.error("[Audio] Failed to set output device", err);
+      }
+    };
+
+    void setSink(rxProcessedAudioRef.current);
+    Object.values(webrtcAudioRef.current).forEach((audio) => {
+      void setSink(audio);
     });
   }, [consoleSettings.outputDeviceId]);
 
@@ -2034,6 +2273,24 @@ export default function CommunityConsole() {
   useEffect(() => {
     return () => {
       destroyMicStream();
+      Object.keys(remoteAudioPipelinesRef.current).forEach((socketId) => {
+        teardownRemoteAudioPipeline(socketId);
+      });
+      try {
+        chunkVoiceSourceRef.current?.disconnect();
+      } catch {}
+      try {
+        chunkVoiceDestinationRef.current?.disconnect();
+      } catch {}
+      chunkVoiceSourceRef.current = null;
+      chunkVoiceDestinationRef.current = null;
+      chunkVoiceProcessingReadyRef.current = false;
+      if (sharedAudioCtxRef.current) {
+        try {
+          void sharedAudioCtxRef.current.close();
+        } catch {}
+        sharedAudioCtxRef.current = null;
+      }
     };
   }, []);
 
@@ -2466,6 +2723,7 @@ export default function CommunityConsole() {
         onSave={updateConsoleSettings}
       />
       <audio ref={rxMonitorAudioRef} className="hidden" autoPlay />
+      <audio ref={rxProcessedAudioRef} className="hidden" autoPlay />
     </>
   );
 }
