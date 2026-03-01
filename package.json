@@ -9,7 +9,7 @@
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
