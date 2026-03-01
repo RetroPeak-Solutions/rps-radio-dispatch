@@ -771,24 +771,14 @@ export default function CommunityConsole() {
 
   const applyWebRtcAudioForSocket = useCallback((remoteSocketId: string) => {
     const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
-    const pipeline = remoteAudioPipelinesRef.current[remoteSocketId];
-    if (!pipeline) {
-      if (txChannels.length === 0) {
-        delete noPipelineFirstSeenAtRef.current[remoteSocketId];
-        return;
-      }
-      const now = Date.now();
-      const firstSeen = noPipelineFirstSeenAtRef.current[remoteSocketId] ?? now;
-      noPipelineFirstSeenAtRef.current[remoteSocketId] = firstSeen;
-      const last = noPipelineLogAtRef.current[remoteSocketId] ?? 0;
-      if (now - firstSeen < 350) return;
-      if (now - last > 5000) {
-        noPipelineLogAtRef.current[remoteSocketId] = now;
-        voiceDebug("apply-gain:no-pipeline", { remoteSocketId });
+    const audio = webrtcAudioRef.current[remoteSocketId];
+    if (!audio) {
+      if (txChannels.length > 0) {
+        voiceDebug("apply-gain:no-audio-element", { remoteSocketId });
       }
       return;
     }
-    delete noPipelineFirstSeenAtRef.current[remoteSocketId];
+
     const listened = txChannels.filter((id) => channelListening[id]);
     const fallbackListened =
       listened.length > 0
@@ -798,7 +788,7 @@ export default function CommunityConsole() {
             .map(([id]) => id);
 
     if (fallbackListened.length === 0) {
-      pipeline.outputGain.gain.value = 0;
+      audio.volume = 0;
       voiceDebug("apply-gain:muted", {
         remoteSocketId,
         txChannels,
@@ -811,7 +801,7 @@ export default function CommunityConsole() {
       return Math.max(0, Math.min(100, value));
     });
     const volume = Math.max(...perChannel) / 100;
-    pipeline.outputGain.gain.value = volume;
+    audio.volume = volume;
     voiceDebug("apply-gain:active", {
       remoteSocketId,
       listened: fallbackListened,
@@ -889,13 +879,23 @@ export default function CommunityConsole() {
             trackId: track.id,
           });
       }
-      void ensureRemoteAudioPipeline(targetSocketId, stream).then((audio) => {
-        if (audio) {
-          webrtcAudioRef.current[targetSocketId] = audio;
-        }
-        applyWebRtcAudioForSocket(targetSocketId);
-        voiceDebug("webrtc:ontrack:pipeline-ready", { targetSocketId });
-      });
+      let audio = webrtcAudioRef.current[targetSocketId];
+      if (!audio) {
+        audio = new Audio();
+        audio.autoplay = true;
+        audio.muted = false;
+        webrtcAudioRef.current[targetSocketId] = audio;
+      }
+      if (audio.srcObject !== stream) {
+        audio.srcObject = stream;
+      }
+      const sinkId = consoleSettings.outputDeviceId;
+      if (sinkId && typeof (audio as any).setSinkId === "function") {
+        void (audio as any).setSinkId(sinkId).catch(() => {});
+      }
+      void audio.play().catch(() => {});
+      applyWebRtcAudioForSocket(targetSocketId);
+      voiceDebug("webrtc:ontrack:audio-ready", { targetSocketId });
     };
 
     pc.onconnectionstatechange = () => {
@@ -916,6 +916,7 @@ export default function CommunityConsole() {
         }
         teardownRemoteAudioPipeline(targetSocketId);
         delete remoteTxChannelsRef.current[targetSocketId];
+        delete pendingIceCandidatesRef.current[targetSocketId];
       }
     };
 
@@ -1544,6 +1545,7 @@ export default function CommunityConsole() {
         }
         teardownRemoteAudioPipeline(event.socketId);
         delete remoteTxChannelsRef.current[event.socketId];
+        delete pendingIceCandidatesRef.current[event.socketId];
         delete peerMapRef.current[event.socketId];
         setPeersState(
           Object.values(peerMapRef.current).map((p) => ({
@@ -1600,26 +1602,6 @@ export default function CommunityConsole() {
           remoteTxChannelsRef.current[event.socketId] = remaining;
         }
         applyWebRtcAudioForSocket(event.socketId);
-        if (event.active && !remoteAudioPipelinesRef.current[event.socketId]) {
-          void (async () => {
-            try {
-              const pc = await ensureWebRtcPeer(event.socketId!);
-              if (!pc || pc.signalingState !== "stable") return;
-              const offer = await pc.createOffer();
-              await pc.setLocalDescription(offer);
-              socket?.emit("dispatch:webrtc-signal", {
-                communityId,
-                targetSocketId: event.socketId,
-                description: pc.localDescription,
-              });
-              voiceDebug("webrtc:renegotiate-on-no-pipeline", {
-                remoteSocketId: event.socketId,
-              });
-            } catch (err) {
-              voiceWarn("webrtc:renegotiate-on-no-pipeline-failed", err);
-            }
-          })();
-        }
       }
 
       setChannelsState(normalizedIds, "rx", event.active);
@@ -1873,10 +1855,20 @@ export default function CommunityConsole() {
               signalingState,
             });
           } else if (descType === "offer" && signalingState !== "stable") {
-            voiceWarn("webrtc:ignore-offer-nonstable", {
-              fromSocketId: event.fromSocketId,
-              signalingState,
-            });
+            if (signalingState === "have-local-offer") {
+              await pc.setLocalDescription({ type: "rollback" });
+              await pc.setRemoteDescription(event.description);
+              remoteDescriptionApplied = true;
+              voiceWarn("webrtc:offer-glare-rollback", {
+                fromSocketId: event.fromSocketId,
+                signalingState,
+              });
+            } else {
+              voiceWarn("webrtc:ignore-offer-nonstable", {
+                fromSocketId: event.fromSocketId,
+                signalingState,
+              });
+            }
           } else {
             await pc.setRemoteDescription(event.description);
             remoteDescriptionApplied = true;
@@ -1905,13 +1897,37 @@ export default function CommunityConsole() {
               targetSocketId: event.fromSocketId,
             });
           }
+          if (remoteDescriptionApplied) {
+            const queued = pendingIceCandidatesRef.current[event.fromSocketId] ?? [];
+            if (queued.length > 0) {
+              for (const candidate of queued) {
+                await pc.addIceCandidate(candidate);
+              }
+              pendingIceCandidatesRef.current[event.fromSocketId] = [];
+              debugLog("onWebRtcSignal:drainQueuedIce:ok", {
+                fromSocketId: event.fromSocketId,
+                count: queued.length,
+              });
+            }
+          }
         }
 
         if (event.candidate) {
-          await pc.addIceCandidate(event.candidate);
-          debugLog("onWebRtcSignal:addIceCandidate:ok", {
-            fromSocketId: event.fromSocketId,
-          });
+          if (!pc.remoteDescription) {
+            if (!pendingIceCandidatesRef.current[event.fromSocketId]) {
+              pendingIceCandidatesRef.current[event.fromSocketId] = [];
+            }
+            pendingIceCandidatesRef.current[event.fromSocketId].push(event.candidate);
+            debugLog("onWebRtcSignal:queueIceCandidate", {
+              fromSocketId: event.fromSocketId,
+              queued: pendingIceCandidatesRef.current[event.fromSocketId].length,
+            });
+          } else {
+            await pc.addIceCandidate(event.candidate);
+            debugLog("onWebRtcSignal:addIceCandidate:ok", {
+              fromSocketId: event.fromSocketId,
+            });
+          }
         }
       } catch (err) {
         console.error("[WebRTC] signaling error:", err);
@@ -1937,6 +1953,9 @@ export default function CommunityConsole() {
       Object.keys(remoteTxChannelsRef.current).forEach((socketId) => {
         delete remoteTxChannelsRef.current[socketId];
       });
+      Object.keys(pendingIceCandidatesRef.current).forEach((socketId) => {
+        delete pendingIceCandidatesRef.current[socketId];
+      });
     };
   }, [socket, communityId, ensureWebRtcPeer]);
 
@@ -1955,6 +1974,9 @@ export default function CommunityConsole() {
   const webrtcPeerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
   const webrtcAudioRef = useRef<Record<string, HTMLAudioElement>>({});
   const remoteTxChannelsRef = useRef<Record<string, string[]>>({});
+  const pendingIceCandidatesRef = useRef<
+    Record<string, RTCIceCandidateInit[]>
+  >({});
 
   const pendingChunksRef = useRef<Uint8Array[]>([]);
   const accumulatedChunksRef = useRef<Uint8Array[]>([]);
