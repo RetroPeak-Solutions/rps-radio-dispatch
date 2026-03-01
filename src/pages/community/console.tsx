@@ -39,6 +39,10 @@ type Position = { x: string; y: string };
 type CommunityData = {
   id: string;
   name: string;
+  members?: Array<{
+    userId: string;
+    radioId?: string | null;
+  }>;
   radioZones: RadioZone[];
   radioChannels: RadioChannel[];
   tones: QuickCall2ToneSet[];
@@ -317,6 +321,7 @@ export default function CommunityConsole() {
   const { toast } = useToast();
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
+  const [sessionUserId, setSessionUserId] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [consoleSettings, setConsoleSettings] = useState<ConsoleSettingsState>(
     DEFAULT_CONSOLE_SETTINGS,
@@ -398,6 +403,13 @@ export default function CommunityConsole() {
   );
   const incomingVoicePlayingRef = useRef(false);
   const hotCuePendingRef = useRef(false);
+
+  const sessionRadioId = useMemo(() => {
+    if (!community || !sessionUserId) return "";
+    const member = community.members?.find((m) => m.userId === sessionUserId);
+    return (member?.radioId ?? "").trim();
+  }, [community, sessionUserId]);
+  const dispatchSource = sessionRadioId || "You";
 
   const syncPeerAudioSender = async (
     pc: RTCPeerConnection,
@@ -842,7 +854,7 @@ export default function CommunityConsole() {
       socket.emit("dispatch:voice-frame", {
         communityId,
         channelIds: activeChannels,
-        source: "You",
+        source: dispatchSource,
         sampleRate: 16000,
         frameBase64: encodeInt16ToBase64(frame),
         timestamp: Date.now(),
@@ -866,7 +878,7 @@ export default function CommunityConsole() {
         socket.emit("dispatch:voice-frame", {
           communityId,
           channelIds: activeChannels,
-          source: "You",
+          source: dispatchSource,
           sampleRate: 16000,
           frameBase64: encodeInt16ToBase64(frame),
           timestamp: Date.now(),
@@ -1696,7 +1708,7 @@ export default function CommunityConsole() {
       setChannelLastSrc((prev) => {
         const next = { ...prev };
         normalizedChannelIds.forEach((id) => {
-          next[id] = active ? "You" : (next[id] ?? "You");
+          next[id] = active ? dispatchSource : (next[id] ?? dispatchSource);
         });
         return next;
       });
@@ -1705,7 +1717,7 @@ export default function CommunityConsole() {
         communityId,
         channelIds: normalizedChannelIds,
         active,
-        source: "You",
+        source: dispatchSource,
         timestamp: Date.now(),
       });
       debugLog("transmitPtt:emit-dispatch-ptt", {
@@ -1714,7 +1726,7 @@ export default function CommunityConsole() {
         active,
       });
     },
-    [communityId, listenedChannelIds, normalizeToZoneChannelId, socket],
+    [communityId, listenedChannelIds, normalizeToZoneChannelId, socket, dispatchSource],
   );
 
   const playTones = async (
@@ -1769,7 +1781,7 @@ export default function CommunityConsole() {
     setChannelLastSrc((prev) => {
       const next = { ...prev };
       channels.forEach((id) => {
-        next[id] = "You";
+        next[id] = dispatchSource;
       });
       return next;
     });
@@ -1777,7 +1789,7 @@ export default function CommunityConsole() {
     socket?.emit("dispatch:tone", {
       communityId,
       channelIds: channels,
-      source: "You",
+      source: dispatchSource,
       tones,
       timestamp: Date.now(),
     });
@@ -1809,6 +1821,7 @@ export default function CommunityConsole() {
           },
         );
         setCommunity(res.data.community);
+        setSessionUserId(res.data?.user?.id ?? "");
 
         const loaded = normalizeSettings(
           (await window.api.settings.get()) ?? null,
