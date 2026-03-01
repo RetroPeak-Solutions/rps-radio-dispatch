@@ -2578,22 +2578,17 @@ export default function CommunityConsole() {
                                 onPointerDown={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  if (settings?.txAudio.playStart) {
-                                    void playSfx(AUDIO_SFX.talkActive, 0.5, consoleSettings.outputDeviceId);
-                                  }
                                   void transmitPtt(
                                     true,
                                     [ch.id],
                                     ch.channel.name,
+                                    true,
                                   );
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                                 onPointerUp={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  if (settings?.txAudio.playEnd) {
-                                    void playSfx(AUDIO_SFX.talkEnd, 0.5, consoleSettings.outputDeviceId);
-                                  }
                                   void transmitPtt(
                                     false,
                                     [ch.id],
@@ -2603,9 +2598,6 @@ export default function CommunityConsole() {
                                 onPointerCancel={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  if (settings?.txAudio.playEnd) {
-                                    void playSfx(AUDIO_SFX.talkEnd, 0.5, consoleSettings.outputDeviceId);
-                                  }
                                   void transmitPtt(
                                     false,
                                     [ch.id],
