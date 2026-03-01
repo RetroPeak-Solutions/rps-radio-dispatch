@@ -2166,11 +2166,17 @@ export default function CommunityConsole() {
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setToneQueue((prev) =>
-                                    prev.includes(t.id)
-                                      ? prev
-                                      : [...prev, t.id],
-                                  );
+                                  if (toneQueue.includes(t.id)) {
+                                    setToneQueue((prev) =>
+                                      prev.filter((id) => id !== t.id),
+                                    );
+                                  } else {
+                                    setToneQueue((prev) =>
+                                      prev.includes(t.id)
+                                        ? prev
+                                        : [...prev, t.id],
+                                    );
+                                  }
                                 }}
                               >
                                 <img
