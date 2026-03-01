@@ -369,6 +369,8 @@ export default function CommunityConsole() {
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
   const rxProcessedAudioRef = useRef<HTMLAudioElement | null>(null);
   const sharedAudioCtxRef = useRef<AudioContext | null>(null);
+  const processedMixDestinationRef =
+    useRef<MediaStreamAudioDestinationNode | null>(null);
   const remoteAudioPipelinesRef = useRef<Record<string, RemoteAudioPipeline>>(
     {},
   );
@@ -448,16 +450,40 @@ export default function CommunityConsole() {
   const ensureProcessedOutputReady = async () => {
     const ctx = ensureSharedAudioContext();
     if (!ctx) return null;
+    if (!processedMixDestinationRef.current) {
+      processedMixDestinationRef.current = ctx.createMediaStreamDestination();
+      voiceDebug("processed-output:destination-created");
+    }
+
+    const outputAudio = rxProcessedAudioRef.current;
+    if (!outputAudio) return null;
+
+    if (outputAudio.srcObject !== processedMixDestinationRef.current.stream) {
+      outputAudio.srcObject = processedMixDestinationRef.current.stream;
+      voiceDebug("processed-output:audio-srcObject-attached");
+    }
+    outputAudio.autoplay = true;
+    outputAudio.muted = false;
+
+    const sinkId = consoleSettings.outputDeviceId;
+    if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
+      try {
+        await (outputAudio as any).setSinkId(sinkId);
+        voiceDebug("processed-output:setSinkId:ok", { sinkId });
+      } catch {}
+    }
 
     if (ctx.state === "suspended") {
       try {
         await ctx.resume();
       } catch {}
     }
+    outputAudio.play().catch(() => {});
     voiceDebug("processed-output:context-ready", {
       ctxState: ctx.state,
+      sinkId: sinkId || null,
     });
-    return ctx;
+    return { ctx, destination: processedMixDestinationRef.current };
   };
 
   const createRadioEffectChain = (ctx: AudioContext): RadioEffectChain => {
@@ -515,8 +541,9 @@ export default function CommunityConsole() {
       return rxProcessedAudioRef.current;
     if (existing) teardownRemoteAudioPipeline(socketId);
 
-    const ctx = await ensureProcessedOutputReady();
-    if (!ctx) return null;
+    const output = await ensureProcessedOutputReady();
+    if (!output) return null;
+    const { ctx, destination } = output;
 
     const source = ctx.createMediaStreamSource(stream);
     const outputGain = ctx.createGain();
@@ -534,7 +561,7 @@ export default function CommunityConsole() {
     } else {
       source.connect(outputGain);
     }
-    outputGain.connect(ctx.destination);
+    outputGain.connect(destination);
 
     remoteAudioPipelinesRef.current[socketId] = {
       streamId: stream.id,
@@ -1866,8 +1893,9 @@ export default function CommunityConsole() {
 
   const ensureChunkVoiceProcessing = async (inputAudio: HTMLAudioElement) => {
     if (chunkVoiceProcessingReadyRef.current) return;
-    const ctx = await ensureProcessedOutputReady();
-    if (!ctx) return;
+    const output = await ensureProcessedOutputReady();
+    if (!output) return;
+    const { ctx, destination } = output;
 
     if (!chunkVoiceSourceRef.current) {
       try {
@@ -1881,16 +1909,16 @@ export default function CommunityConsole() {
 
     if (!chunkVoiceDestinationRef.current) {
       voiceDebug("chunk-voice:destination-attached", {
-        type: "ctx.destination",
+        type: "processedMixDestination",
       });
     }
 
     if (ENFORCE_REQUIRED_RADIO_VOCODER) {
       const chain = createRadioEffectChain(ctx);
       chunkVoiceSourceRef.current.connect(chain.input);
-      chain.output.connect(ctx.destination);
+      chain.output.connect(destination);
     } else {
-      chunkVoiceSourceRef.current.connect(ctx.destination);
+      chunkVoiceSourceRef.current.connect(destination);
     }
 
     chunkVoiceProcessingReadyRef.current = true;
