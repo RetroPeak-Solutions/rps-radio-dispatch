@@ -790,8 +790,14 @@ export default function CommunityConsole() {
     }
     delete noPipelineFirstSeenAtRef.current[remoteSocketId];
     const listened = txChannels.filter((id) => channelListening[id]);
+    const fallbackListened =
+      listened.length > 0
+        ? listened
+        : Object.entries(channelListening)
+            .filter(([, on]) => on)
+            .map(([id]) => id);
 
-    if (listened.length === 0) {
+    if (fallbackListened.length === 0) {
       pipeline.outputGain.gain.value = 0;
       voiceDebug("apply-gain:muted", {
         remoteSocketId,
@@ -800,7 +806,7 @@ export default function CommunityConsole() {
       return;
     }
 
-    const perChannel = listened.map((id) => {
+    const perChannel = fallbackListened.map((id) => {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
@@ -808,7 +814,7 @@ export default function CommunityConsole() {
     pipeline.outputGain.gain.value = volume;
     voiceDebug("apply-gain:active", {
       remoteSocketId,
-      listened,
+      listened: fallbackListened,
       volume,
     });
   }, [channelListening, volumes]);
@@ -1753,14 +1759,24 @@ export default function CommunityConsole() {
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
       legacyLog("[RX Voice] Received chunk, size:", event.chunkBase64.length);
+      const listeningChannelIds = Object.entries(channelListening)
+        .filter(([, listening]) => listening)
+        .map(([id]) => id);
       const normalizedChannelIds = Array.from(
         new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
       );
+      const routedChannelIds =
+        normalizedChannelIds.length > 0
+          ? normalizedChannelIds.filter((id) => channelListening[id])
+          : [];
+      const playbackChannels =
+        routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
       legacyLog("[RX Voice] Event channels:", normalizedChannelIds);
+      legacyLog("[RX Voice] Routed channels:", playbackChannels);
       playIncomingChunk(
         event.chunkBase64,
         event.mimeType || "audio/webm;codecs=opus",
-        normalizedChannelIds,
+        playbackChannels,
       );
     };
 
