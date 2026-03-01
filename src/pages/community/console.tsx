@@ -839,13 +839,14 @@ export default function CommunityConsole() {
             payload?.sampleRate || ctx.sampleRate,
           );
           if (!frame || frame.length === 0) return;
-          socket.emit("dispatch:voice-frame", {
-            communityId,
-            channelIds: activeChannels,
-            sampleRate: 16000,
-            frameBase64: encodeInt16ToBase64(frame),
-            timestamp: Date.now(),
-          });
+      socket.emit("dispatch:voice-frame", {
+        communityId,
+        channelIds: activeChannels,
+        source: "You",
+        sampleRate: 16000,
+        frameBase64: encodeInt16ToBase64(frame),
+        timestamp: Date.now(),
+      });
         };
         processorNode = worklet;
       } catch (err) {
@@ -865,6 +866,7 @@ export default function CommunityConsole() {
         socket.emit("dispatch:voice-frame", {
           communityId,
           channelIds: activeChannels,
+          source: "You",
           sampleRate: 16000,
           frameBase64: encodeInt16ToBase64(frame),
           timestamp: Date.now(),
