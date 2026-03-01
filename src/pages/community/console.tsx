@@ -2089,7 +2089,7 @@ export default function CommunityConsole() {
       domAudio ? "DOM audio element" : "new Audio()",
     );
     audio.autoplay = true;
-    audio.muted = true;
+    audio.muted = false;
 
     audioElementRef.current = audio;
 
@@ -2098,7 +2098,6 @@ export default function CommunityConsole() {
 
     audio.src = URL.createObjectURL(mediaSource);
     legacyLog("[RX Audio] MediaSource created and attached");
-    void ensureChunkVoiceProcessing(audio);
 
     mediaSource.addEventListener("sourceopen", () => {
       legacyLog("[RX Audio] sourceopen fired");
@@ -2149,11 +2148,19 @@ export default function CommunityConsole() {
       legacyLog("[RX Audio] No listened channels for this chunk");
       return;
     }
+    const perChannelVolumes = listened.map((id) => {
+      const value = volumes[id] ?? 50;
+      return Math.max(0, Math.min(100, value));
+    });
+    const chunkVolume = Math.max(...perChannelVolumes) / 100;
 
     legacyLog("[RX Audio] Received chunk -> queueing (size):", chunkBase64.length);
 
     // Ensure the MediaSource + SourceBuffer are ready
     initIncomingAudio();
+    if (audioElementRef.current) {
+      audioElementRef.current.volume = chunkVolume;
+    }
 
     // Decode base64 -> Uint8Array
     const binary = atob(chunkBase64);
