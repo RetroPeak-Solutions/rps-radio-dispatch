@@ -1,15 +1,23 @@
 import { useEffect, useRef, type MutableRefObject } from "react";
 import type { CommunityPttChannels } from "@components/UI/CommunityConsoleSettingsDialog";
+import TalkActiveSfx from "@assets/audio/talk_active.wav";
+import TalkDeniedSfx from "@assets/audio/talk_denied.wav";
+import TalkEndSfx from "@assets/audio/talk_end.wav";
+import HoldSfx from "@assets/audio/hold.wav";
+import EmergencySfx from "@assets/audio/emergency.wav";
+import Alert1Sfx from "@assets/audio/alert1.wav";
+import Alert2Sfx from "@assets/audio/alert2.wav";
+import Alert3Sfx from "@assets/audio/alert3.wav";
 
 const AUDIO_SFX = {
-  talkActive: "/assets/audio/talk_active.mp3",
-  talkDenied: "/assets/audio/talk_denied.mp3",
-  talkEnd: "/assets/audio/talk_end.mp3",
-  hold: "/assets/audio/hold.wav",
-  emergency: "/assets/audio/emergency.wav",
-  alert1: "/assets/audio/alert1.wav",
-  alert2: "/assets/audio/alert2.wav",
-  alert3: "/assets/audio/alert3.wav",
+  talkActive: TalkActiveSfx,
+  talkDenied: TalkDeniedSfx,
+  talkEnd: TalkEndSfx,
+  hold: HoldSfx,
+  emergency: EmergencySfx,
+  alert1: Alert1Sfx,
+  alert2: Alert2Sfx,
+  alert3: Alert3Sfx,
 } as const;
 
 export type QuickPttCombo = {
