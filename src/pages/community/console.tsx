@@ -2940,7 +2940,7 @@ export default function CommunityConsole() {
                     : "hover:bg-[#3C83F6]/20 px-4 py-2"
                 }
               >
-                {zone.name}e
+                {zone.name}
               </Tab>
             ))}
           </Tab.List>
