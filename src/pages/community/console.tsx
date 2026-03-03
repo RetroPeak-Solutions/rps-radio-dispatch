@@ -361,6 +361,10 @@ export default function CommunityConsole() {
   >({});
   const [toneQueue, setToneQueue] = useState<string[]>([]);
   const [canvasHeight, setCanvasHeight] = useState(MIN_CANVAS_HEIGHT);
+  const [canvasWidth, setCanvasWidth] = useState(0);
+  const [autoWrapLayout, setAutoWrapLayout] = useState<
+    Record<string, { x: number; y: number }> | null
+  >(null);
   const [zuluTime, setZuluTime] = useState("");
   const [localPttActive, setLocalPttActive] = useState(false);
   const [activePttIndicator, setActivePttIndicator] = useState<string | null>(
@@ -2674,6 +2678,18 @@ export default function CommunityConsole() {
     debugEnabled: SHOW_PTT_DEBUG,
   });
 
+  useEffect(() => {
+    const node = canvasRef.current;
+    if (!node) return;
+    setCanvasWidth(Math.max(0, Math.floor(node.offsetWidth || 0)));
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width ?? node.offsetWidth ?? 0;
+      setCanvasWidth(Math.max(0, Math.floor(width)));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [activeZoneIndex, community?.id]);
+
   // ---------------- AUTO PLACEMENT ----------------
   useEffect(() => {
     if (!community || !canvasRef.current || !activeZone) return;
@@ -2716,14 +2732,65 @@ export default function CommunityConsole() {
       activeZone.channels.forEach((c) => getNextOpenPos(c.id));
       activeZone.toneSets?.forEach((t) => getNextOpenPos(t.id));
 
-      const lowest =
-        Math.max(...Object.values(updated).map((p) => p.y + CARD_HEIGHT)) +
-        CARD_SPACING;
-      setCanvasHeight(Math.max(lowest, MIN_CANVAS_HEIGHT));
-
       return updated;
     });
-  }, [community, activeZoneIndex, activeZone, activeZoneItemIds]);
+  }, [community, activeZoneIndex, activeZone, activeZoneItemIds, canvasWidth]);
+
+  useEffect(() => {
+    if (!community || !activeZone) return;
+    const width = Math.max(
+      canvasWidth || canvasRef.current?.offsetWidth || 0,
+      CARD_WIDTH + CARD_SPACING * 2,
+    );
+    const stepX = CARD_WIDTH + CARD_SPACING;
+    const stepY = CARD_HEIGHT + CARD_SPACING;
+    const columns = Math.max(1, Math.floor((width - CARD_SPACING) / stepX));
+    const itemIds = [
+      ...(activeZone.channels?.map((c) => c.id) ?? []),
+      ...(activeZone.toneSets?.map((t) => t.id) ?? []),
+    ];
+
+    if (itemIds.length === 0) {
+      setAutoWrapLayout(null);
+      setCanvasHeight(MIN_CANVAS_HEIGHT);
+      return;
+    }
+
+    const fallbackByIndex: Record<string, { x: number; y: number }> = {};
+    itemIds.forEach((id, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      fallbackByIndex[id] = {
+        x: CARD_SPACING + col * stepX,
+        y: CARD_SPACING + row * stepY,
+      };
+    });
+
+    const zonePositions: Record<string, { x: number; y: number }> = {};
+    itemIds.forEach((id) => {
+      zonePositions[id] = positions[id] ?? fallbackByIndex[id];
+    });
+
+    const savedLayoutMaxRight = Math.max(
+      ...Object.values(zonePositions).map((p) => p.x + CARD_WIDTH),
+    );
+    const shouldAutoWrap = !editMode && savedLayoutMaxRight > width - CARD_SPACING;
+
+    if (shouldAutoWrap) {
+      setAutoWrapLayout(fallbackByIndex);
+      const wrappedLowest =
+        Math.max(...Object.values(fallbackByIndex).map((p) => p.y + CARD_HEIGHT)) +
+        CARD_SPACING;
+      setCanvasHeight(Math.max(wrappedLowest, MIN_CANVAS_HEIGHT));
+      return;
+    }
+
+    setAutoWrapLayout(null);
+    const lowest =
+      Math.max(...Object.values(zonePositions).map((p) => p.y + CARD_HEIGHT)) +
+      CARD_SPACING;
+    setCanvasHeight(Math.max(lowest, MIN_CANVAS_HEIGHT));
+  }, [community, activeZone, activeZoneIndex, positions, canvasWidth, editMode]);
 
   // ---------------- DRAG LOGIC ----------------
   const clampToCanvas = (x: number, y: number) => {
@@ -2945,12 +3012,12 @@ export default function CommunityConsole() {
             ))}
           </Tab.List>
 
-          <Tab.Panels className="fixed top-24 w-full flex-1 h-full">
-            {sortedZones.map((zone, zoneIndex) => (
-              <Tab.Panel key={zone.id}>
+        <Tab.Panels className="fixed top-24 bottom-0 w-full overflow-y-auto overflow-x-hidden">
+          {sortedZones.map((zone, zoneIndex) => (
+              <Tab.Panel key={zone.id} className="min-h-full">
                 <div
                   ref={zoneIndex === activeZoneIndex ? canvasRef : null}
-                  className="relative w-full h-fit"
+                  className="relative w-full h-fit min-h-full"
                   style={{ height: canvasHeight }}
                 >
                   <DndContext
@@ -2960,7 +3027,9 @@ export default function CommunityConsole() {
                     onDragEnd={handleDragEnd}
                   >
                     {zone.channels.map((ch) => {
-                      const pos = positions[ch.id] || { x: 20, y: 20 };
+                      const pos =
+                        autoWrapLayout?.[ch.id] ??
+                        positions[ch.id] ?? { x: 20, y: 20 };
                       const volume = volumes[ch.id] ?? 50;
                       const listening = channelListening[ch.id] ?? false;
                       const channelChildrenEnabled = listening;
@@ -2983,7 +3052,7 @@ export default function CommunityConsole() {
 
                       return (
                         <DraggableItem
-                          drag={editMode}
+                          drag={editMode && !autoWrapLayout}
                           key={ch.id}
                           id={ch.id}
                           pos={pos}
@@ -3168,7 +3237,9 @@ export default function CommunityConsole() {
                     })}
 
                     {zone.toneSets?.map((t) => {
-                      const pos = positions[t.id] || { x: 50, y: 50 };
+                      const pos =
+                        autoWrapLayout?.[t.id] ??
+                        positions[t.id] ?? { x: 50, y: 50 };
                       const queued = toneQueue.includes(t.id);
 
                       return (
@@ -3176,7 +3247,7 @@ export default function CommunityConsole() {
                           key={t.id}
                           id={t.id}
                           pos={pos}
-                          drag={editMode}
+                          drag={editMode && !autoWrapLayout}
                         >
                           <DragCard
                             className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${

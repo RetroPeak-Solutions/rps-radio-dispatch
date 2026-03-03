@@ -1,7 +1,6 @@
 import React from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
 import {
-  Radio,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -69,12 +68,12 @@ export default function Navbar() {
       <header className="select-none fixed left-6 right-6 top-4 z-5 rounded-2xl border border-white/15 bg-[#0C1524]/80 px-4 py-3 shadow-[0_12px_36px_rgba(0,0,0,0.4)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <NavLink to="/" className="flex items-center gap-2 text-white">
-            <span className="rounded-lg bg-[#3C83F6]/20 p-2 text-[#8DB6FF]">
-              <Radio className="h-4 w-4" />
-            </span>
-            <span className="text-sm font-semibold">
-              RetroRadio | Dispatch Portal
-            </span>
+            <img
+              src="/assets/imgs/retroradio-dispatch-logo.svg"
+              alt="RetroRadio Dispatch"
+              className="h-14 w-auto object-contain"
+              draggable={false}
+            />
           </NavLink>
 
           <nav className="flex items-center gap-2">
