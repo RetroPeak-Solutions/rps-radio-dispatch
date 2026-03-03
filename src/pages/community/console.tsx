@@ -3735,6 +3735,7 @@ export default function CommunityConsole() {
       <audio ref={rxMonitorAudioRef} className="hidden" autoPlay />
       <audio ref={rxFrameAudioRef} className="hidden" autoPlay />
       <audio ref={rxProcessedAudioRef} className="hidden" autoPlay />
+      t
     </>
   );
 }
