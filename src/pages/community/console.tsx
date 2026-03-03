@@ -2148,15 +2148,8 @@ export default function CommunityConsole() {
       );
 
       const isSelfEvent = Boolean(event.socketId && event.socketId === socket.id);
+      if (isSelfEvent) return;
       const tones = event.tones ?? [];
-      const isHoldOnlyEvent =
-        tones.length > 0 &&
-        tones.every((tone) =>
-          `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase().includes("hold"),
-        );
-      if (isSelfEvent && isHoldOnlyEvent) {
-        return;
-      }
 
       setChannelLastSrc((prev) => {
         const next = { ...prev };
