@@ -22,6 +22,7 @@ import link from "@utils/link";
 import playQuickCall2 from "@utils/playQC2Tone";
 import type { QuickCall2ToneSet, RadioChannel, RadioZone } from "@lib/types";
 import DragCard from "@components/UI/DragCard";
+import AudioPlayer from "@components/UI/AudioPlayer";
 import CommunityConsoleSettingsDialog, {
   type CommunityPttBindings,
   type CommunityPttChannels,
@@ -3649,7 +3650,9 @@ export default function CommunityConsole() {
                   <div className="space-y-2">
                     {callHistoryItems.map((item) => {
                       const audioSrc =
-                        item.audioUrl && item.audioUrl.startsWith("http")
+                        item.audioUrl &&
+                        (item.audioUrl.startsWith("http") ||
+                          item.audioUrl.startsWith("data:"))
                           ? item.audioUrl
                           : item.audioUrl
                             ? `${link("prod")}${item.audioUrl}`
@@ -3688,12 +3691,7 @@ export default function CommunityConsole() {
                               </p>
                             )}
                           {item.eventType === "VOICE" && audioSrc ? (
-                            <audio
-                              className="mt-2 w-full"
-                              controls
-                              src={audioSrc}
-                              preload="none"
-                            />
+                            <AudioPlayer src={audioSrc} />
                           ) : null}
                         </div>
                       );
