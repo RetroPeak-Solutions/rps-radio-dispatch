@@ -91,6 +91,8 @@ const CARD_HEIGHT = 150;
 const CARD_SPACING = 16;
 const SNAP_DISTANCE = 28;
 const HOLD_TONE_INTERVAL_SECONDS = 30;
+const PANIC_EMERGENCY_INTERVAL_SECONDS = HOLD_TONE_INTERVAL_SECONDS;
+const CALL_HISTORY_PAGE_SIZE = 12;
 
 const MIN_CANVAS_HEIGHT = 600;
 const MAX_CANVAS_HEIGHT = 2000;
@@ -232,6 +234,7 @@ import AlertTone from "@assets/imgs/alerttone.png";
 import AudioIcon from "@assets/imgs/audio.png";
 import ClearEmerg from "@assets/imgs/clearemerg.png";
 import HoldIcon from "@assets/imgs/channelmarker.png";
+import PTT from "@assets/imgs/pttselect.png";
 
 const AUDIO_SFX = {
   talkActive: TalkActiveSfx,
@@ -250,11 +253,19 @@ const ACTION_BTN_ICONS = {
   audio: AudioIcon,
   clearEmerg: ClearEmerg,
   hold: HoldIcon,
+  ptt: PTT,
 }
 
-const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
+const playSfx = async (
+  src: string,
+  volume = 0.8,
+  outputDeviceId: any,
+  playbackRate = 1,
+  stopAtRatio = 1,
+) => {
   const audio = new Audio(src);
   audio.volume = volume;
+  audio.playbackRate = playbackRate;
   const sinkId = outputDeviceId;
   if (sinkId && typeof (audio as any).setSinkId === "function") {
     try {
@@ -266,14 +277,39 @@ const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
 
   await new Promise<void>((resolve) => {
     let done = false;
+    let stopTimer: number | null = null;
     const finish = () => {
       if (done) return;
       done = true;
+       if (stopTimer !== null) {
+        window.clearTimeout(stopTimer);
+      }
       resolve();
     };
+
+    const scheduleEarlyStop = () => {
+      if (!(stopAtRatio > 0 && stopAtRatio < 1)) return;
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      const stopMs = Math.max(1, Math.floor(audio.duration * stopAtRatio * 1000));
+      stopTimer = window.setTimeout(() => {
+        try {
+          audio.pause();
+          audio.currentTime = Math.min(audio.duration, audio.duration * stopAtRatio);
+        } catch {}
+        finish();
+      }, stopMs);
+    };
+
+    audio.addEventListener("loadedmetadata", scheduleEarlyStop, { once: true });
     audio.addEventListener("ended", finish, { once: true });
     audio.addEventListener("error", finish, { once: true });
-    audio.play().catch(finish);
+    audio
+      .play()
+      .then(() => {
+        // If metadata was already available, schedule now.
+        scheduleEarlyStop();
+      })
+      .catch(finish);
     setTimeout(finish, 6000);
   });
 };
@@ -386,6 +422,9 @@ export default function CommunityConsole() {
   const [channelToneTransmitting, setChannelToneTransmitting] = useState<
     Record<string, boolean>
   >({});
+  const [channelPanicActive, setChannelPanicActive] = useState<
+    Record<string, boolean>
+  >({});
   const [channelHoldActive, setChannelHoldActive] = useState<
     Record<string, boolean>
   >({});
@@ -408,11 +447,19 @@ export default function CommunityConsole() {
   const [callHistoryItems, setCallHistoryItems] = useState<
     DispatchCallHistoryItem[]
   >([]);
+  const [callHistoryTypeFilter, setCallHistoryTypeFilter] = useState<
+    "VOICE" | "TONE"
+  >("VOICE");
+  const [callHistoryPage, setCallHistoryPage] = useState(1);
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const holdToneIntervalsRef = useRef<Record<string, number>>({});
   const holdToneSendingRef = useRef<Record<string, boolean>>({});
+  const panicEmergencyIntervalRef = useRef<number | null>(null);
+  const panicEmergencySendingRef = useRef(false);
+  const panicEmergencyStartTimeoutRef = useRef<number | null>(null);
+  const channelPanicActiveRef = useRef<Record<string, boolean>>({});
   const micStreamRef = useRef<MediaStream | null>(null);
   const micInputDeviceIdRef = useRef<string>("");
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -452,6 +499,34 @@ export default function CommunityConsole() {
     return (member?.radioId ?? "").trim();
   }, [community, sessionUserId]);
   const dispatchSource = sessionRadioId || "You";
+
+  useEffect(() => {
+    channelPanicActiveRef.current = channelPanicActive;
+  }, [channelPanicActive]);
+
+  const filteredCallHistoryItems = useMemo(
+    () =>
+      callHistoryItems.filter((item) => item.eventType === callHistoryTypeFilter),
+    [callHistoryItems, callHistoryTypeFilter],
+  );
+  const callHistoryTotalPages = Math.max(
+    1,
+    Math.ceil(filteredCallHistoryItems.length / CALL_HISTORY_PAGE_SIZE),
+  );
+  const pagedCallHistoryItems = useMemo(() => {
+    const start = (callHistoryPage - 1) * CALL_HISTORY_PAGE_SIZE;
+    return filteredCallHistoryItems.slice(start, start + CALL_HISTORY_PAGE_SIZE);
+  }, [filteredCallHistoryItems, callHistoryPage]);
+
+  useEffect(() => {
+    setCallHistoryPage(1);
+  }, [callHistoryTypeFilter]);
+
+  useEffect(() => {
+    if (callHistoryPage > callHistoryTotalPages) {
+      setCallHistoryPage(callHistoryTotalPages);
+    }
+  }, [callHistoryPage, callHistoryTotalPages]);
 
   const syncPeerAudioSender = async (
     pc: RTCPeerConnection,
@@ -1626,6 +1701,176 @@ export default function CommunityConsole() {
       () => emitHoldTone(channelId),
       HOLD_TONE_INTERVAL_SECONDS * 1000,
     );
+  };
+
+  const emitActionAlertTone = async (alertNumber: 1 | 2 | 3) => {
+    if (!communityId) return;
+    const channels = listenedChannelIds.filter(
+      (id) => channelPageState[id] === true,
+    );
+    if (channels.length === 0) {
+      toast("No active page-state channels selected for tone transmit.", {
+        type: "warning",
+      });
+      return;
+    }
+
+    const tone: TonePacket = {
+      id: `alert${alertNumber}-${Date.now()}`,
+      name: `alert${alertNumber}`,
+      toneAHz: 0,
+      toneBHz: 0,
+      durationA: 0.3,
+      durationB: 0.3,
+    };
+
+    setToneChannelsState(channels, "tx", true);
+    setChannelLastSrc((prev) => {
+      const next = { ...prev };
+      channels.forEach((id) => {
+        next[id] = dispatchSource;
+      });
+      return next;
+    });
+
+    socket?.emit("dispatch:tone", {
+      communityId,
+      channelIds: channels,
+      source: dispatchSource,
+      tones: [tone],
+      timestamp: Date.now(),
+    });
+
+    const localVolume = (volumes[channels[0]] ?? 50) / 100;
+    await playSfx(
+      alertNumber === 1
+        ? AUDIO_SFX.alert1
+        : alertNumber === 2
+          ? AUDIO_SFX.alert2
+          : AUDIO_SFX.alert3,
+      localVolume,
+      consoleSettings.outputDeviceId,
+      1,
+      0.5,
+    );
+    setToneChannelsState(channels, "tx", false);
+    setChannelPageState((prev) => {
+      const next = { ...prev };
+      channels.forEach((id) => {
+        next[id] = false;
+      });
+      return next;
+    });
+  };
+
+  const triggerPanicTestState = () => {
+    const channels = listenedChannelIds.filter(
+      (id) => channelPageState[id] === true,
+    );
+    if (channels.length === 0) {
+      toast("No active page-state channels selected for panic test.", {
+        type: "warning",
+      });
+      return;
+    }
+    const newlyActivatedChannels = channels.filter(
+      (id) => !channelPanicActive[id],
+    );
+    setChannelPanicActive((prev) => {
+      const next = { ...prev };
+      channels.forEach((id) => {
+        next[id] = true;
+      });
+      return next;
+    });
+    if (newlyActivatedChannels.length === 0) return;
+
+    const initialTone: TonePacket = {
+      id: `panic-initial-${Date.now()}`,
+      name: "alert2",
+      toneAHz: 0,
+      toneBHz: 0,
+      durationA: 0.3,
+      durationB: 0.3,
+    };
+
+    setToneChannelsState(newlyActivatedChannels, "tx", true);
+    setChannelLastSrc((prev) => {
+      const next = { ...prev };
+      newlyActivatedChannels.forEach((id) => {
+        next[id] = dispatchSource;
+      });
+      return next;
+    });
+    socket?.emit("dispatch:tone", {
+      communityId,
+      channelIds: newlyActivatedChannels,
+      source: dispatchSource,
+      tones: [initialTone],
+      timestamp: Date.now(),
+    });
+    const localVolume = (volumes[newlyActivatedChannels[0]] ?? 50) / 100;
+    void playSfx(AUDIO_SFX.alert2, localVolume, consoleSettings.outputDeviceId)
+      .finally(() => {
+        setToneChannelsState(newlyActivatedChannels, "tx", false);
+        setChannelPageState((prev) => {
+          const next = { ...prev };
+          newlyActivatedChannels.forEach((id) => {
+            next[id] = false;
+          });
+          return next;
+        });
+      });
+
+    if (!panicEmergencyIntervalRef.current && !panicEmergencyStartTimeoutRef.current) {
+      panicEmergencyStartTimeoutRef.current = window.setTimeout(() => {
+        panicEmergencyStartTimeoutRef.current = null;
+        panicEmergencyIntervalRef.current = window.setInterval(() => {
+          if (!communityId || panicEmergencySendingRef.current) return;
+
+          const activePanicChannels = Object.entries(channelPanicActiveRef.current)
+            .filter(([, active]) => active)
+            .map(([id]) => id);
+          if (activePanicChannels.length === 0) return;
+
+          panicEmergencySendingRef.current = true;
+          const emergencyTone: TonePacket = {
+            id: `panic-emergency-${Date.now()}`,
+            name: "emergency",
+            toneAHz: 0,
+            toneBHz: 0,
+            durationA: 0.3,
+            durationB: 0.3,
+          };
+
+          setToneChannelsState(activePanicChannels, "tx", true);
+          setChannelLastSrc((prev) => {
+            const next = { ...prev };
+            activePanicChannels.forEach((id) => {
+              next[id] = dispatchSource;
+            });
+            return next;
+          });
+          socket?.emit("dispatch:tone", {
+            communityId,
+            channelIds: activePanicChannels,
+            source: dispatchSource,
+            tones: [emergencyTone],
+            timestamp: Date.now(),
+          });
+
+          const emergencyVolume = (volumes[activePanicChannels[0]] ?? 50) / 100;
+          void playSfx(
+            AUDIO_SFX.emergency,
+            emergencyVolume,
+            consoleSettings.outputDeviceId,
+          ).finally(() => {
+            setToneChannelsState(activePanicChannels, "tx", false);
+            panicEmergencySendingRef.current = false;
+          });
+        }, PANIC_EMERGENCY_INTERVAL_SECONDS * 1000);
+      }, PANIC_EMERGENCY_INTERVAL_SECONDS * 1000);
+    }
   };
 
   const toggleListening = (channelId: string) => {
@@ -3067,6 +3312,15 @@ export default function CommunityConsole() {
       });
       holdToneIntervalsRef.current = {};
       holdToneSendingRef.current = {};
+      if (panicEmergencyIntervalRef.current) {
+        window.clearInterval(panicEmergencyIntervalRef.current);
+        panicEmergencyIntervalRef.current = null;
+      }
+      if (panicEmergencyStartTimeoutRef.current) {
+        window.clearTimeout(panicEmergencyStartTimeoutRef.current);
+        panicEmergencyStartTimeoutRef.current = null;
+      }
+      panicEmergencySendingRef.current = false;
       destroyMicStream();
       stopVoiceFrameCapture();
       Object.keys(remoteAudioPipelinesRef.current).forEach((socketId) => {
@@ -3100,6 +3354,25 @@ export default function CommunityConsole() {
 
   return (
     <>
+      <style>{`
+        @keyframes panicFlash {
+          0% {
+            border-color: rgba(185, 28, 28, 0.45);
+            background-color: rgba(127, 29, 29, 0.14);
+            box-shadow: 0 0 6px rgba(185, 28, 28, 0.12);
+          }
+          50% {
+            border-color: rgba(220, 38, 38, 0.55);
+            background-color: rgba(127, 29, 29, 0.2);
+            box-shadow: 0 0 10px rgba(185, 28, 28, 0.2);
+          }
+          100% {
+            border-color: rgba(185, 28, 28, 0.45);
+            background-color: rgba(127, 29, 29, 0.14);
+            box-shadow: 0 0 6px rgba(185, 28, 28, 0.12);
+          }
+        }
+      `}</style>
       <div className="min-h-screen bg-[#0B1220] text-white font-mono flex flex-col">
         <div className="flex flex-col w-full fixed z-10 min-h-fit">
           <div className="z-10 w-full flex flex-row justify-between p-2 bg-[#0C1524] border-b border-gray-700">
@@ -3158,7 +3431,7 @@ export default function CommunityConsole() {
               <img
                 width={30}
                 height={30}
-                src={ACTION_BTN_ICONS.instantPtt}
+                src={ACTION_BTN_ICONS.ptt}
               />
             </button>
             <button
@@ -3168,8 +3441,8 @@ export default function CommunityConsole() {
               // disabled={!channelChildrenEnabled}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
-                return;
-                // e.stopPropagation();
+                e.stopPropagation();
+                emitActionAlertTone(1);
               }}
             >
               <img
@@ -3185,8 +3458,25 @@ export default function CommunityConsole() {
               // disabled={!channelChildrenEnabled}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
-                return;
-                // e.stopPropagation();
+                e.stopPropagation();
+                emitActionAlertTone(2);
+              }}
+            >
+              <img
+                width={30}
+                height={30}
+                src={ACTION_BTN_ICONS.alertTone}
+              />
+            </button>
+            <button
+              id="alert3-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+              // disabled={!channelChildrenEnabled}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                emitActionAlertTone(3);
               }}
             >
               <img
@@ -3203,10 +3493,31 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                toast("Clear emergency shortcut coming soon.", { type: "info" });
+                setChannelPanicActive({});
+                if (panicEmergencyIntervalRef.current) {
+                  window.clearInterval(panicEmergencyIntervalRef.current);
+                  panicEmergencyIntervalRef.current = null;
+                }
+                if (panicEmergencyStartTimeoutRef.current) {
+                  window.clearTimeout(panicEmergencyStartTimeoutRef.current);
+                  panicEmergencyStartTimeoutRef.current = null;
+                }
+                panicEmergencySendingRef.current = false;
               }}
             >
               <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
+            </button>
+            <button
+              id="panic-test-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#ff666699] bg-[#3A1212] text-[#FFB4B4] hover:bg-[#4A1919] text-sm leading-none font-semibold transition"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                triggerPanicTestState();
+              }}
+            >
+              Panic Test
             </button>
 
             <button
@@ -3298,7 +3609,10 @@ export default function CommunityConsole() {
                       const rx = channelReceiving[ch.id] ?? false;
                       const toneTx = channelToneTransmitting[ch.id] ?? false;
                       const toneRx = channelToneReceiving[ch.id] ?? false;
-                      const stateClass = tx
+                      const panicActive = channelPanicActive[ch.id] ?? false;
+                      const stateClass = panicActive
+                        ? "bg-none [animation:panicFlash_1s_linear_infinite]"
+                        : tx
                         ? "border-red-400 shadow-[0_0_18px_rgba(248,113,113,0.5)]"
                         : toneTx
                           ? "border-orange-400 shadow-[0_0_18px_rgba(251,146,60,0.5)]"
@@ -3380,7 +3694,9 @@ export default function CommunityConsole() {
                                   Last SRC: {channelLastSrc[ch.id] ?? "None"}
                                 </span>
                                 <span
-                                  className={`text-xs ${tx
+                                  className={`text-xs ${panicActive
+                                    ? "text-red-300 animate-pulse"
+                                    : tx
                                     ? "text-red-400"
                                     : toneTx
                                       ? "text-orange-300"
@@ -3394,7 +3710,9 @@ export default function CommunityConsole() {
                                     }`}
                                 >
                                   State:{" "}
-                                  {tx
+                                  {panicActive
+                                    ? "PANIC ACTIVE"
+                                    : tx
                                     ? "Transmitting"
                                     : toneTx
                                       ? "Transmitting"
@@ -3639,16 +3957,47 @@ export default function CommunityConsole() {
                   </button>
                 </div>
               </div>
-              <div className="max-h-[calc(80vh-60px)] overflow-y-auto p-3">
-                {callHistoryItems.length === 0 ? (
+              <div className="flex max-h-[calc(80vh-60px)] flex-col">
+                <div className="border-b border-[#2A3145] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                  <div className="inline-flex rounded-md border border-[#2A3145] bg-[#111827] p-1">
+                    <button
+                      className={`rounded px-3 py-1 text-xs transition ${
+                        callHistoryTypeFilter === "VOICE"
+                          ? "bg-[#3C83F61A] text-[#BFD8FF]"
+                          : "text-[#94A3B8] hover:text-[#BFD8FF]"
+                      }`}
+                      onClick={() => setCallHistoryTypeFilter("VOICE")}
+                    >
+                      Voice
+                    </button>
+                    <button
+                      className={`rounded px-3 py-1 text-xs transition ${
+                        callHistoryTypeFilter === "TONE"
+                          ? "bg-[#3C83F61A] text-[#BFD8FF]"
+                          : "text-[#94A3B8] hover:text-[#BFD8FF]"
+                      }`}
+                      onClick={() => setCallHistoryTypeFilter("TONE")}
+                    >
+                      Tone
+                    </button>
+                  </div>
+                  <p className="text-xs text-[#94A3B8]">
+                    {filteredCallHistoryItems.length} result
+                    {filteredCallHistoryItems.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-3">
+                {filteredCallHistoryItems.length === 0 ? (
                   <p className="text-sm text-[#94A3B8]">
                     {callHistoryLoading
                       ? "Loading call history..."
-                      : "No transmission history yet."}
+                      : `No ${callHistoryTypeFilter.toLowerCase()} history yet.`}
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {callHistoryItems.map((item) => {
+                    {pagedCallHistoryItems.map((item) => {
                       const audioSrc =
                         item.audioUrl &&
                         (item.audioUrl.startsWith("http") ||
@@ -3698,6 +4047,34 @@ export default function CommunityConsole() {
                     })}
                   </div>
                 )}
+                </div>
+                <div className="flex items-center justify-between border-t border-[#2A3145] px-3 py-2">
+                  <p className="text-xs text-[#94A3B8]">
+                    Page {callHistoryPage} of {callHistoryTotalPages}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] px-3 py-1.5 text-xs text-[#BFD8FF] hover:bg-[#253047] disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() =>
+                        setCallHistoryPage((prev) => Math.max(1, prev - 1))
+                      }
+                      disabled={callHistoryPage <= 1}
+                    >
+                      Prev
+                    </button>
+                    <button
+                      className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] px-3 py-1.5 text-xs text-[#BFD8FF] hover:bg-[#253047] disabled:cursor-not-allowed disabled:opacity-50"
+                      onClick={() =>
+                        setCallHistoryPage((prev) =>
+                          Math.min(callHistoryTotalPages, prev + 1),
+                        )
+                      }
+                      disabled={callHistoryPage >= callHistoryTotalPages}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </motion.div>
