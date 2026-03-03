@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import { Tab } from "@headlessui/react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   DndContext,
   useDraggable,
@@ -27,7 +28,7 @@ import CommunityConsoleSettingsDialog, {
   type ConsoleSettingsState,
 } from "@components/UI/CommunityConsoleSettingsDialog";
 import { useCommunityPttHotkeys } from "@pages/community/pttHotkeys";
-import { Settings } from "lucide-react";
+import { History, Settings, X } from "lucide-react";
 import InstantPTT from "@assets/imgs/instantptt.png";
 import PageSelect from "@assets/imgs/pageselect.png";
 import ChannelMarker from "@assets/imgs/channelmarker.png";
@@ -57,6 +58,18 @@ type TonePacket = {
   toneBHz: number;
   durationA: number;
   durationB: number;
+};
+
+type DispatchCallHistoryItem = {
+  id: string;
+  source: string;
+  eventType: "VOICE" | "TONE";
+  channelIds: string[];
+  tonePayload: Array<{ id?: string; name?: string }>;
+  audioUrl: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  durationMs: number | null;
 };
 
 type RadioEffectChain = {
@@ -389,6 +402,11 @@ export default function CommunityConsole() {
   const [pttDebug, setPttDebug] = useState("");
   const [peerIdState, setPeerIdState] = useState<string | null>(null);
   const [peersState, setPeersState] = useState<Array<{ peerId: string; channelIds: string[] }>>([]);
+  const [callHistoryOpen, setCallHistoryOpen] = useState(false);
+  const [callHistoryLoading, setCallHistoryLoading] = useState(false);
+  const [callHistoryItems, setCallHistoryItems] = useState<
+    DispatchCallHistoryItem[]
+  >([]);
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -1939,6 +1957,24 @@ export default function CommunityConsole() {
     });
   };
 
+  const fetchCallHistory = useCallback(async () => {
+    if (!communityId) return;
+    setCallHistoryLoading(true);
+    try {
+      const res = await axios.get(
+        `${link("prod")}/api/communities/${communityId}/call-history?limit=200`,
+        { withCredentials: true },
+      );
+      const items = Array.isArray(res.data?.items) ? res.data.items : [];
+      setCallHistoryItems(items);
+    } catch (err) {
+      console.error(err);
+      toast("Failed to load call history.", { type: "error" });
+    } finally {
+      setCallHistoryLoading(false);
+    }
+  }, [communityId, toast]);
+
   // ---------------- FETCH ----------------
   useEffect(() => {
     if (!communityId || community) return;
@@ -3212,7 +3248,8 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                toast("Call history panel coming soon.", { type: "info" });
+                setCallHistoryOpen(true);
+                void fetchCallHistory();
               }}
             >
               Call Hist
@@ -3570,6 +3607,111 @@ export default function CommunityConsole() {
           </Tab.Panels>
         </Tab.Group>
       </div>
+
+      <AnimatePresence>
+        {callHistoryOpen && (
+          <motion.div
+            className="fixed inset-0 z-[1200] bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setCallHistoryOpen(false)}
+          >
+            <motion.div
+              className="w-full max-w-4xl max-h-[80vh] overflow-hidden rounded-lg border border-[#2A3145] bg-[#111827] shadow-[0_0_24px_rgba(0,0,0,0.5)]"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-[#2A3145] px-4 py-3">
+                <div className="flex items-center gap-2 text-[#BFD8FF]">
+                  <History size={16} />
+                  <h2 className="text-base font-semibold">Call History</h2>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] px-3 py-1.5 text-xs text-[#BFD8FF] hover:bg-[#253047]"
+                    onClick={() => void fetchCallHistory()}
+                    disabled={callHistoryLoading}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] p-1.5 text-[#BFD8FF] hover:bg-[#253047]"
+                    onClick={() => setCallHistoryOpen(false)}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[calc(80vh-60px)] overflow-y-auto p-3">
+                {callHistoryItems.length === 0 ? (
+                  <p className="text-sm text-[#94A3B8]">
+                    {callHistoryLoading
+                      ? "Loading call history..."
+                      : "No transmission history yet."}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {callHistoryItems.map((item) => {
+                      const audioSrc =
+                        item.audioUrl && item.audioUrl.startsWith("http")
+                          ? item.audioUrl
+                          : item.audioUrl
+                            ? `${link("prod")}${item.audioUrl}`
+                            : null;
+                      return (
+                        <div
+                          key={item.id}
+                          className="rounded-lg border border-[#2A3145] bg-[#151A26] p-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm text-white">
+                              {item.eventType === "VOICE" ? "Voice" : "Tone"} |{" "}
+                              {item.source}
+                            </p>
+                            <p className="text-xs text-[#94A3B8]">
+                              {new Date(item.startedAt).toLocaleString()}
+                            </p>
+                          </div>
+                          <p className="mt-1 text-xs text-[#C7D2FE]">
+                            Channels:{" "}
+                            {item.channelIds.length > 0
+                              ? item.channelIds
+                                .map((id) => channelNameById[id] ?? id)
+                                .join(", ")
+                              : "None"}
+                          </p>
+                          {item.eventType === "TONE" &&
+                            Array.isArray(item.tonePayload) &&
+                            item.tonePayload.length > 0 && (
+                              <p className="mt-1 text-xs text-[#C7D2FE]">
+                                Tones:{" "}
+                                {item.tonePayload
+                                  .map((tone) => tone?.name || tone?.id || "")
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </p>
+                            )}
+                          {item.eventType === "VOICE" && audioSrc ? (
+                            <audio
+                              className="mt-2 w-full"
+                              controls
+                              src={audioSrc}
+                              preload="none"
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <CommunityConsoleSettingsDialog
         open={settingsDialogOpen}
