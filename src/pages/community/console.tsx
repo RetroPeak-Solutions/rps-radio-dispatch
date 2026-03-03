@@ -76,6 +76,7 @@ const CARD_WIDTH = 350;
 const CARD_HEIGHT = 150;
 const CARD_SPACING = 16;
 const SNAP_DISTANCE = 28;
+const HOLD_TONE_INTERVAL_SECONDS = 30;
 
 const MIN_CANVAS_HEIGHT = 600;
 const MAX_CANVAS_HEIGHT = 2000;
@@ -213,6 +214,10 @@ import EmergencySfx from "@assets/audio/emergency.wav";
 import Alert1Sfx from "@assets/audio/alert1.wav";
 import Alert2Sfx from "@assets/audio/alert2.wav";
 import Alert3Sfx from "@assets/audio/alert3.wav";
+import AlertTone from "@assets/imgs/alerttone.png";
+import AudioIcon from "@assets/imgs/audio.png";
+import ClearEmerg from "@assets/imgs/clearemerg.png";
+import HoldIcon from "@assets/imgs/channelmarker.png";
 
 const AUDIO_SFX = {
   talkActive: TalkActiveSfx,
@@ -224,6 +229,14 @@ const AUDIO_SFX = {
   alert2: Alert2Sfx,
   alert3: Alert3Sfx,
 } as const;
+
+const ACTION_BTN_ICONS = {
+  instantPtt: InstantPTT,
+  alertTone: AlertTone,
+  audio: AudioIcon,
+  clearEmerg: ClearEmerg,
+  hold: HoldIcon,
+}
 
 const playSfx = async (src: string, volume = 0.8, outputDeviceId: any) => {
   const audio = new Audio(src);
@@ -359,6 +372,9 @@ export default function CommunityConsole() {
   const [channelToneTransmitting, setChannelToneTransmitting] = useState<
     Record<string, boolean>
   >({});
+  const [channelHoldActive, setChannelHoldActive] = useState<
+    Record<string, boolean>
+  >({});
   const [toneQueue, setToneQueue] = useState<string[]>([]);
   const [canvasHeight, setCanvasHeight] = useState(MIN_CANVAS_HEIGHT);
   const [canvasWidth, setCanvasWidth] = useState(0);
@@ -376,6 +392,8 @@ export default function CommunityConsole() {
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const holdToneIntervalsRef = useRef<Record<string, number>>({});
+  const holdToneSendingRef = useRef<Record<string, boolean>>({});
   const micStreamRef = useRef<MediaStream | null>(null);
   const micInputDeviceIdRef = useRef<string>("");
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -502,13 +520,13 @@ export default function CommunityConsole() {
       try {
         await (outputAudio as any).setSinkId(sinkId);
         voiceDebug("processed-output:setSinkId:ok", { sinkId });
-      } catch {}
+      } catch { }
     }
 
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch {}
+      } catch { }
     }
     outputAudio.play().catch((err) => {
       voiceWarn("processed-output:play-failed", err);
@@ -583,19 +601,19 @@ export default function CommunityConsole() {
     if (!pipeline) return;
     try {
       pipeline.source.disconnect();
-    } catch {}
+    } catch { }
     try {
       pipeline.outputGain.disconnect();
-    } catch {}
+    } catch { }
     try {
       pipeline.outputAudio.pause();
-    } catch {}
+    } catch { }
     try {
       pipeline.outputAudio.srcObject = null;
-    } catch {}
+    } catch { }
     try {
       void pipeline.context.close();
-    } catch {}
+    } catch { }
     delete remoteAudioPipelinesRef.current[socketId];
     delete noPipelineLogAtRef.current[socketId];
     delete noPipelineFirstSeenAtRef.current[socketId];
@@ -650,12 +668,12 @@ export default function CommunityConsole() {
     if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
       try {
         await (outputAudio as any).setSinkId(sinkId);
-      } catch {}
+      } catch { }
     }
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch {}
+      } catch { }
     }
     if (ctx!.state !== "running") {
       voiceWarn("remote-audio-pipeline:context-not-running", {
@@ -664,10 +682,10 @@ export default function CommunityConsole() {
       });
       try {
         outputAudio.srcObject = null;
-      } catch {}
+      } catch { }
       try {
         void ctx!.close();
-      } catch {}
+      } catch { }
       return null;
     }
     try {
@@ -679,10 +697,10 @@ export default function CommunityConsole() {
       });
       try {
         outputAudio.srcObject = null;
-      } catch {}
+      } catch { }
       try {
         void ctx!.close();
-      } catch {}
+      } catch { }
       return null;
     }
 
@@ -799,20 +817,20 @@ export default function CommunityConsole() {
   const stopVoiceFrameCapture = () => {
     try {
       txFrameProcessorRef.current?.disconnect();
-    } catch {}
+    } catch { }
     if (txFrameScriptProcessorRef.current) {
       txFrameScriptProcessorRef.current.onaudioprocess = null;
     }
     try {
       txFrameSourceRef.current?.disconnect();
-    } catch {}
+    } catch { }
     try {
       txFrameSilentGainRef.current?.disconnect();
-    } catch {}
+    } catch { }
     if (txFrameCtxRef.current) {
       try {
         void txFrameCtxRef.current.close();
-      } catch {}
+      } catch { }
     }
     txFrameProcessorRef.current = null;
     txFrameScriptProcessorRef.current = null;
@@ -856,14 +874,14 @@ export default function CommunityConsole() {
             payload?.sampleRate || ctx.sampleRate,
           );
           if (!frame || frame.length === 0) return;
-      socket.emit("dispatch:voice-frame", {
-        communityId,
-        channelIds: activeChannels,
-        source: dispatchSource,
-        sampleRate: 16000,
-        frameBase64: encodeInt16ToBase64(frame),
-        timestamp: Date.now(),
-      });
+          socket.emit("dispatch:voice-frame", {
+            communityId,
+            channelIds: activeChannels,
+            source: dispatchSource,
+            sampleRate: 16000,
+            frameBase64: encodeInt16ToBase64(frame),
+            timestamp: Date.now(),
+          });
         };
         processorNode = worklet;
       } catch (err) {
@@ -900,7 +918,7 @@ export default function CommunityConsole() {
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch {}
+      } catch { }
     }
 
     txFrameCtxRef.current = ctx;
@@ -932,14 +950,14 @@ export default function CommunityConsole() {
     if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
       try {
         await (outputAudio as any).setSinkId(sinkId);
-      } catch {}
+      } catch { }
     }
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch {}
+      } catch { }
     }
-    outputAudio.play().catch(() => {});
+    outputAudio.play().catch(() => { });
     return { ctx, destination: rxFrameDestinationRef.current };
   };
 
@@ -995,13 +1013,13 @@ export default function CommunityConsole() {
     source.onended = () => {
       try {
         source.disconnect();
-      } catch {}
+      } catch { }
       try {
         inputGain.disconnect();
-      } catch {}
+      } catch { }
       try {
         gainNode.disconnect();
-      } catch {}
+      } catch { }
     };
   };
 
@@ -1129,13 +1147,13 @@ export default function CommunityConsole() {
         ? listened
         : txChannels.length > 0
           ? Object.entries(channelListening)
-              .filter(([, on]) => on)
-              .map(([id]) => id)
+            .filter(([, on]) => on)
+            .map(([id]) => id)
           : activeRxChannels.length > 0
             ? activeRxChannels
             : Object.entries(channelListening)
-                .filter(([, on]) => on)
-                .map(([id]) => id);
+              .filter(([, on]) => on)
+              .map(([id]) => id);
 
     if (channelsForGain.length === 0) {
       if (pipeline) {
@@ -1259,9 +1277,9 @@ export default function CommunityConsole() {
         fallbackAudio.srcObject = stream;
         const sinkId = consoleSettings.outputDeviceId;
         if (sinkId && typeof (fallbackAudio as any).setSinkId === "function") {
-          void (fallbackAudio as any).setSinkId(sinkId).catch(() => {});
+          void (fallbackAudio as any).setSinkId(sinkId).catch(() => { });
         }
-        void fallbackAudio.play().catch(() => {});
+        void fallbackAudio.play().catch(() => { });
         applyWebRtcAudioForSocket(targetSocketId);
         voiceWarn("webrtc:ontrack:fallback-raw-audio", { targetSocketId });
       });
@@ -1275,12 +1293,12 @@ export default function CommunityConsole() {
       if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
         try {
           pc.close();
-        } catch {}
+        } catch { }
         delete webrtcPeerConnectionsRef.current[targetSocketId];
         if (webrtcAudioRef.current[targetSocketId]) {
           try {
             webrtcAudioRef.current[targetSocketId].srcObject = null;
-          } catch {}
+          } catch { }
           delete webrtcAudioRef.current[targetSocketId];
         }
         teardownRemoteAudioPipeline(targetSocketId);
@@ -1383,8 +1401,8 @@ export default function CommunityConsole() {
     () =>
       community
         ? [...community.radioZones].sort(
-            (a, b) => a.codeplugIndex - b.codeplugIndex,
-          )
+          (a, b) => a.codeplugIndex - b.codeplugIndex,
+        )
         : [],
     [community],
   );
@@ -1530,10 +1548,75 @@ export default function CommunityConsole() {
     return false;
   };
 
+  const clearHoldToneInterval = (channelId: string) => {
+    const timer = holdToneIntervalsRef.current[channelId];
+    if (timer) {
+      window.clearInterval(timer);
+      delete holdToneIntervalsRef.current[channelId];
+    }
+    delete holdToneSendingRef.current[channelId];
+  };
+
+  const emitHoldTone = (channelId: string) => {
+    if (!communityId || holdToneSendingRef.current[channelId]) return;
+    holdToneSendingRef.current[channelId] = true;
+
+    const normalizedId = normalizeToZoneChannelId(channelId);
+    const holdTone: TonePacket = {
+      id: `hold-${normalizedId}`,
+      name: "hold",
+      toneAHz: 0,
+      toneBHz: 0,
+      durationA: 0.3,
+      durationB: 0.3,
+    };
+
+    setToneChannelsState([normalizedId], "tx", true);
+    setChannelLastSrc((prev) => ({
+      ...prev,
+      [normalizedId]: dispatchSource,
+    }));
+
+    socket?.emit("dispatch:tone", {
+      communityId,
+      channelIds: [normalizedId],
+      source: dispatchSource,
+      tones: [holdTone],
+      timestamp: Date.now(),
+    });
+    const localVolume = (volumes[normalizedId] ?? 50) / 100;
+    void playSfx(AUDIO_SFX.hold, localVolume, consoleSettings.outputDeviceId);
+
+    window.setTimeout(() => {
+      setToneChannelsState([normalizedId], "tx", false);
+      holdToneSendingRef.current[channelId] = false;
+    }, 1200);
+  };
+
+  const toggleChannelHoldTone = (channelId: string) => {
+    const isActive = Boolean(channelHoldActive[channelId]);
+    if (isActive) {
+      clearHoldToneInterval(channelId);
+      setChannelHoldActive((prev) => ({ ...prev, [channelId]: false }));
+      return;
+    }
+
+    setChannelHoldActive((prev) => ({ ...prev, [channelId]: true }));
+    emitHoldTone(channelId);
+    holdToneIntervalsRef.current[channelId] = window.setInterval(
+      () => emitHoldTone(channelId),
+      HOLD_TONE_INTERVAL_SECONDS * 1000,
+    );
+  };
+
   const toggleListening = (channelId: string) => {
     if (editMode || !communityId) return;
     setChannelListening((prev) => {
       const next = !prev[channelId];
+      if (!next) {
+        clearHoldToneInterval(channelId);
+        setChannelHoldActive((holdPrev) => ({ ...holdPrev, [channelId]: false }));
+      }
       debugLog("toggleListening", {
         channelId,
         nextListening: next,
@@ -1544,6 +1627,22 @@ export default function CommunityConsole() {
         listening: next,
       });
       return { ...prev, [channelId]: next };
+    });
+  };
+
+  const setActiveZoneListening = (nextListening: boolean) => {
+    if (!communityId || !activeZone) return;
+    setChannelListening((prev) => {
+      const next = { ...prev };
+      activeZone.channels.forEach((ch) => {
+        next[ch.id] = nextListening;
+        socket?.emit("dispatch:listen", {
+          communityId,
+          channelId: ch.id,
+          listening: nextListening,
+        });
+      });
+      return next;
     });
   };
 
@@ -1732,9 +1831,9 @@ export default function CommunityConsole() {
       } else {
         setActivePttIndicator(
           indicatorLabel ??
-            (normalizedChannelIds.length === 1
-              ? normalizedChannelIds[0]
-              : "ACTIVE"),
+          (normalizedChannelIds.length === 1
+            ? normalizedChannelIds[0]
+            : "ACTIVE"),
         );
       }
       setChannelsState(normalizedChannelIds, "tx", active);
@@ -1918,14 +2017,14 @@ export default function CommunityConsole() {
         if (pc) {
           try {
             pc.close();
-          } catch {}
+          } catch { }
           delete webrtcPeerConnectionsRef.current[event.socketId];
         }
         const audio = webrtcAudioRef.current[event.socketId];
         if (audio) {
           try {
             audio.srcObject = null;
-          } catch {}
+          } catch { }
           delete webrtcAudioRef.current[event.socketId];
         }
         teardownRemoteAudioPipeline(event.socketId);
@@ -2003,6 +2102,7 @@ export default function CommunityConsole() {
       channelIds: string[];
       source?: string;
       tones: TonePacket[];
+      socketId?: string;
     }) => {
       debugLog("socket:onTone", event);
       const ids = event.channelIds ?? [];
@@ -2010,6 +2110,17 @@ export default function CommunityConsole() {
       const normalizedIds = Array.from(
         new Set(ids.map((id) => normalizeToZoneChannelId(id))),
       );
+
+      const isSelfEvent = Boolean(event.socketId && event.socketId === socket.id);
+      const tones = event.tones ?? [];
+      const isHoldOnlyEvent =
+        tones.length > 0 &&
+        tones.every((tone) =>
+          `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase().includes("hold"),
+        );
+      if (isSelfEvent && isHoldOnlyEvent) {
+        return;
+      }
 
       setChannelLastSrc((prev) => {
         const next = { ...prev };
@@ -2024,7 +2135,7 @@ export default function CommunityConsole() {
       );
       if (localChannels.length > 0) {
         setToneChannelsState(localChannels, "rx", true);
-        await playTones(event.tones ?? [], localChannels);
+        await playTones(tones, localChannels);
         setToneChannelsState(localChannels, "rx", false);
       }
     };
@@ -2361,13 +2472,13 @@ export default function CommunityConsole() {
       Object.keys(webrtcPeerConnectionsRef.current).forEach((socketId) => {
         try {
           webrtcPeerConnectionsRef.current[socketId].close();
-        } catch {}
+        } catch { }
         delete webrtcPeerConnectionsRef.current[socketId];
       });
       Object.keys(webrtcAudioRef.current).forEach((socketId) => {
         try {
           webrtcAudioRef.current[socketId].srcObject = null;
-        } catch {}
+        } catch { }
         delete webrtcAudioRef.current[socketId];
         teardownRemoteAudioPipeline(socketId);
       });
@@ -2386,8 +2497,7 @@ export default function CommunityConsole() {
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const chunkVoiceSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const chunkVoiceDestinationRef =
-    useRef<MediaStreamAudioDestinationNode | null>(null);
+  const chunkVoiceDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const chunkVoiceProcessingReadyRef = useRef(false);
 
   // WebRTC refs
@@ -2395,9 +2505,7 @@ export default function CommunityConsole() {
   const webrtcPeerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
   const webrtcAudioRef = useRef<Record<string, HTMLAudioElement>>({});
   const remoteTxChannelsRef = useRef<Record<string, string[]>>({});
-  const pendingIceCandidatesRef = useRef<
-    Record<string, RTCIceCandidateInit[]>
-  >({});
+  const pendingIceCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
 
   const pendingChunksRef = useRef<Uint8Array[]>([]);
   const accumulatedChunksRef = useRef<Uint8Array[]>([]);
@@ -2621,7 +2729,7 @@ export default function CommunityConsole() {
             console.error("[RX Audio] endOfStream during watchdog failed:", err);
           }
         }
-      } catch {}
+      } catch { }
       audioElementRef.current = null;
       mediaSourceRef.current = null;
       sourceBufferRef.current = null;
@@ -2924,6 +3032,11 @@ export default function CommunityConsole() {
 
   useEffect(() => {
     return () => {
+      Object.values(holdToneIntervalsRef.current).forEach((timer) => {
+        window.clearInterval(timer);
+      });
+      holdToneIntervalsRef.current = {};
+      holdToneSendingRef.current = {};
       destroyMicStream();
       stopVoiceFrameCapture();
       Object.keys(remoteAudioPipelinesRef.current).forEach((socketId) => {
@@ -2931,23 +3044,23 @@ export default function CommunityConsole() {
       });
       try {
         chunkVoiceSourceRef.current?.disconnect();
-      } catch {}
+      } catch { }
       try {
         chunkVoiceDestinationRef.current?.disconnect();
-      } catch {}
+      } catch { }
       chunkVoiceSourceRef.current = null;
       chunkVoiceDestinationRef.current = null;
       chunkVoiceProcessingReadyRef.current = false;
       if (sharedAudioCtxRef.current) {
         try {
           void sharedAudioCtxRef.current.close();
-        } catch {}
+        } catch { }
         sharedAudioCtxRef.current = null;
       }
       if (rxFrameCtxRef.current) {
         try {
           void rxFrameCtxRef.current.close();
-        } catch {}
+        } catch { }
         rxFrameCtxRef.current = null;
       }
     };
@@ -2958,46 +3071,162 @@ export default function CommunityConsole() {
   return (
     <>
       <div className="min-h-screen bg-[#0B1220] text-white font-mono flex flex-col">
-        <div className="z-10 fixed w-full flex justify-between p-2 bg-[#0C1524] border-b border-gray-700">
-          <h1>{community.name} | Dispatch Console</h1>
-          <div className="flex gap-2">
-            <div
-              className=" text-xl font-bold uppercase tracking-widest font-mono select-none text-[#3C83F6] drop-shadow-[0_0_6px_rgba(60,131,246,0.8)] px-2 py-1 rounded-md"
-              style={{ pointerEvents: "none", zIndex: 100 }}
-            >
-              Zulu: {zuluTime}
+        <div className="flex flex-col w-full fixed z-10 min-h-fit">
+          <div className="z-10 w-full flex flex-row justify-between p-2 bg-[#0C1524] border-b border-gray-700">
+            <div id="title-bar" className="flex flex-row gap-1">
+              <h1>{community.name} | Dispatch Console</h1>
             </div>
-            {/* <div className="px-2 py-1 rounded-md text-sm text-[#9CA3AF] flex flex-col items-end">
-              <div>Peer: {peerIdState ?? "—"}</div>
-              <div>Connections: {peersState.length}</div>
-            </div> */}
+            <div className="flex gap-2">
+              <div
+                className=" text-xl font-bold uppercase tracking-widest font-mono select-none text-[#3C83F6] drop-shadow-[0_0_6px_rgba(60,131,246,0.8)] px-2 py-1 rounded-md"
+                style={{ pointerEvents: "none", zIndex: 100 }}
+              >
+                Zulu: {zuluTime}
+              </div>
+              {/* <div className="px-2 py-1 rounded-md text-sm text-[#9CA3AF] flex flex-col items-end">
+                <div>Peer: {peerIdState ?? "—"}</div>
+                <div>Connections: {peersState.length}</div>
+              </div> */}
+              <button
+                className="p-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
+                onClick={() => setSettingsDialogOpen(true)}
+                aria-label="Community Console Settings"
+                title="Community Console Settings"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              <button
+                className="px-3 py-1 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
+                onClick={() => navigate("/")}
+              >
+                Exit Community
+              </button>
+            </div>
+          </div>
+          {SHOW_PTT_DEBUG ? (
+            <div className="px-2 py-1 border-b border-gray-800 text-[11px] text-[#9CA3AF] truncate">
+              PTT Debug: {pttDebug || "idle"}
+            </div>
+          ) : null}
+
+          <div
+            id="actions-bar"
+            className="z-15 w-full px-2 py-1.5 min-h-fit bg-[#0C1524] border-y border-[#2A3145] overflow-x-auto overflow-y-hidden"
+          >
+            <div className="flex flex-row items-stretch gap-1 min-w-max text-white">
             <button
-              className="p-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
-              onClick={() => setSettingsDialogOpen(true)}
-              aria-label="Community Console Settings"
-              title="Community Console Settings"
+              id="global-instant-ptt-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+              // disabled={!channelChildrenEnabled}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                return;
+                // e.stopPropagation();
+              }}
             >
-              <Settings className="w-4 h-4" />
+              <img
+                width={30}
+                height={30}
+                src={ACTION_BTN_ICONS.instantPtt}
+              />
             </button>
             <button
-              className="px-3 py-1 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
-              onClick={() => navigate("/")}
+              id="alert1-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+              // disabled={!channelChildrenEnabled}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                return;
+                // e.stopPropagation();
+              }}
             >
-              Exit Community
+              <img
+                width={30}
+                height={30}
+                src={ACTION_BTN_ICONS.alertTone}
+              />
             </button>
+            <button
+              id="alert2-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+              // disabled={!channelChildrenEnabled}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                return;
+                // e.stopPropagation();
+              }}
+            >
+              <img
+                width={30}
+                height={30}
+                src={ACTION_BTN_ICONS.alertTone}
+              />
+            </button>
+
+            <button
+              id="clear-emerg-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#ff4d4dcc] bg-[#5C1414] text-[#FFD3D3] hover:bg-[#7A1A1A] active:scale-[0.98] transition shadow-[0_0_10px_rgba(255,77,77,0.35)]"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toast("Clear emergency shortcut coming soon.", { type: "info" });
+              }}
+            >
+              <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
+            </button>
+
+            <button
+              id="select-all-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3cf66433] bg-[#1E2A22] hover:bg-[#25342A] text-[#8FFFAE] text-sm leading-none font-semibold transition"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveZoneListening(true);
+              }}
+            >
+              Select All
+            </button>
+            
+            {/* <button
+              id="key-stats-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toast("Key stats panel coming soon.", { type: "info" });
+              }}
+            >
+              Key Stats
+            </button> */}
+
+            <button
+              id="call-hist-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toast("Call history panel coming soon.", { type: "info" });
+              }}
+            >
+              Call Hist
+            </button>
+            </div>
           </div>
         </div>
-        {SHOW_PTT_DEBUG ? (
-          <div className="px-2 py-1 border-b border-gray-800 text-[11px] text-[#9CA3AF] truncate">
-            PTT Debug: {pttDebug || "idle"}
-          </div>
-        ) : null}
+
 
         <Tab.Group
           selectedIndex={activeZoneIndex}
           onChange={setActiveZoneIndex}
         >
-          <Tab.List className="z-10 fixed top-12 w-full flex bg-[#0C1524] border-b border-gray-700">
+          <Tab.List className="z-10 fixed top-[120px] w-full flex bg-[#0C1524] border-b border-gray-700">
             {sortedZones.map((zone) => (
               <Tab
                 key={zone.id}
@@ -3012,8 +3241,8 @@ export default function CommunityConsole() {
             ))}
           </Tab.List>
 
-        <Tab.Panels className="fixed top-24 bottom-0 w-full overflow-y-auto overflow-x-hidden">
-          {sortedZones.map((zone, zoneIndex) => (
+          <Tab.Panels className="fixed top-[166px] bottom-0 w-full overflow-y-auto overflow-x-hidden">
+            {sortedZones.map((zone, zoneIndex) => (
               <Tab.Panel key={zone.id} className="min-h-full">
                 <div
                   ref={zoneIndex === activeZoneIndex ? canvasRef : null}
@@ -3071,15 +3300,14 @@ export default function CommunityConsole() {
                               <button
                                 id="instantptt"
                                 data-interactive="true"
-                                className={`p-2 rounded-lg ${
-                                  !channelChildrenEnabled
-                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                    : tx
-                                      ? "bg-red-500/80"
-                                      : listening
-                                        ? "bg-[#3C83F61A] border border-[#3C83F61A]"
-                                        : "bg-[#9CA3AF]"
-                                }`}
+                                className={`p-2 rounded-lg ${!channelChildrenEnabled
+                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                  : tx
+                                    ? "bg-red-500/80"
+                                    : listening
+                                      ? "bg-[#3C83F61A] border border-[#3C83F61A]"
+                                      : "bg-[#9CA3AF]"
+                                  }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => {
                                   if (!channelChildrenEnabled) return;
@@ -3121,19 +3349,18 @@ export default function CommunityConsole() {
                                   Last SRC: {channelLastSrc[ch.id] ?? "None"}
                                 </span>
                                 <span
-                                  className={`text-xs ${
-                                    tx
-                                      ? "text-red-400"
-                                      : toneTx
-                                        ? "text-orange-300"
-                                        : rx
-                                          ? "text-emerald-400"
-                                          : toneRx
-                                            ? "text-yellow-300"
-                                            : listening
-                                              ? "text-[#3C83F6]"
-                                              : "text-[#6B7280]"
-                                  }`}
+                                  className={`text-xs ${tx
+                                    ? "text-red-400"
+                                    : toneTx
+                                      ? "text-orange-300"
+                                      : rx
+                                        ? "text-emerald-400"
+                                        : toneRx
+                                          ? "text-yellow-300"
+                                          : listening
+                                            ? "text-[#3C83F6]"
+                                            : "text-[#6B7280]"
+                                    }`}
                                 >
                                   State:{" "}
                                   {tx
@@ -3154,11 +3381,10 @@ export default function CommunityConsole() {
                             <div className="flex flex-row gap-2">
                               <div
                                 data-interactive="true"
-                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${
-                                  channelChildrenEnabled
-                                    ? "bg-[#9CA3AF]"
-                                    : "bg-[#6B7280]/70"
-                                }`}
+                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${channelChildrenEnabled
+                                  ? "bg-[#9CA3AF]"
+                                  : "bg-[#6B7280]/70"
+                                  }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -3181,13 +3407,12 @@ export default function CommunityConsole() {
 
                               <button
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
-                                  !channelChildrenEnabled
-                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                    : pageState
-                                      ? "bg-amber-500/70"
-                                      : "bg-[#9CA3AF]"
-                                }`}
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
+                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                  : pageState
+                                    ? "bg-amber-500/70"
+                                    : "bg-[#9CA3AF]"
+                                  }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
@@ -3208,26 +3433,26 @@ export default function CommunityConsole() {
                               </button>
 
                               <button
+                                id="channel-hold-btn"
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
-                                  !channelChildrenEnabled
-                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                    : listening
-                                      ? "bg-[#3C83F61A] border border-[#3C83F61A]"
-                                      : "bg-[#9CA3AF]"
-                                }`}
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
+                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                  : channelHoldActive[ch.id]
+                                    ? "bg-amber-500/70 border border-amber-300"
+                                    : "bg-[#9CA3AF]"
+                                  }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   if (!channelChildrenEnabled) return;
                                   e.stopPropagation();
-                                  toggleListening(ch.id);
+                                  toggleChannelHoldTone(ch.id);
                                 }}
                               >
                                 <img
                                   width={45}
                                   height={45}
-                                  src={ChannelMarker}
+                                  src={ACTION_BTN_ICONS.hold}
                                 />
                               </button>
                             </div>
@@ -3250,11 +3475,10 @@ export default function CommunityConsole() {
                           drag={editMode && !autoWrapLayout}
                         >
                           <DragCard
-                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${
-                              queued
-                                ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
-                                : "border-[#2A3145]"
-                            }`}
+                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${queued
+                              ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
+                              : "border-[#2A3145]"
+                              }`}
                           >
                             <h1>{t.toneSet.name}</h1>
                             <small className="text-[#9CA3AF]">
@@ -3265,11 +3489,10 @@ export default function CommunityConsole() {
                               <button
                                 id="toneplay"
                                 disabled={tonePlaybackBusy}
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${
-                                  tonePlaybackBusy
-                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                    : "bg-[#2A3145] active:bg-[#3C83F6]/40"
-                                }`}
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${tonePlaybackBusy
+                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                  : "bg-[#2A3145] active:bg-[#3C83F6]/40"
+                                  }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={async (e) => {
                                   if (tonePlaybackBusy) return;
@@ -3277,8 +3500,8 @@ export default function CommunityConsole() {
                                   const source =
                                     toneQueue.length > 0
                                       ? (zone.toneSets?.filter((entry) =>
-                                          toneQueue.includes(entry.id),
-                                        ) ?? [])
+                                        toneQueue.includes(entry.id),
+                                      ) ?? [])
                                       : [t];
                                   const packets: TonePacket[] = source.map(
                                     (entry) => ({
@@ -3309,11 +3532,10 @@ export default function CommunityConsole() {
                               </button>
                               <button
                                 id="toneselect"
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${
-                                  queued
-                                    ? "bg-amber-500/70 ring-2 ring-amber-300"
-                                    : "bg-[#2A3145] hover:bg-[#38425c]"
-                                }`}
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${queued
+                                  ? "bg-amber-500/70 ring-2 ring-amber-300"
+                                  : "bg-[#2A3145] hover:bg-[#38425c]"
+                                  }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
