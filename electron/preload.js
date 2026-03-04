@@ -80,6 +80,11 @@ contextBridge.exposeInMainWorld("api", {
       listeners.pttHotkeyEvent.clear();
     },
   },
+
+  device: {
+    getId: () => ipcRenderer.invoke("device.getId"),
+    getInfo: () => ipcRenderer.invoke("device.getInfo"),
+  },
 });
 
 console.log("[DEBUG] Preload loaded successfully");

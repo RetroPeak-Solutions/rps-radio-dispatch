@@ -4,6 +4,9 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import axios from "axios";
+import os from "os";
+import crypto from "crypto";
+import { execSync } from "child_process";
 
 /** @type {"production" | "development"} */
 let nodeEnv = 'production';
@@ -64,6 +67,71 @@ app.whenReady().then(() => {
     console.log("[Settings] Created default settings.json at", settingsPath);
   }
 });
+
+function readSystemSerialNumber() {
+  try {
+    if (process.platform === "darwin") {
+      const out = execSync("ioreg -l | awk '/IOPlatformSerialNumber/ {print $4}' | tr -d '\"'", { encoding: "utf8" }).trim();
+      return out || null;
+    }
+    if (process.platform === "win32") {
+      const out = execSync("powershell -NoProfile -Command \"(Get-CimInstance Win32_BIOS).SerialNumber\"", { encoding: "utf8" }).trim();
+      return out || null;
+    }
+    if (process.platform === "linux") {
+      const paths = [
+        "/sys/class/dmi/id/product_serial",
+        "/sys/class/dmi/id/product_uuid",
+      ];
+      for (const p of paths) {
+        try {
+          const out = fs.readFileSync(p, "utf8").trim();
+          if (out) return out;
+        } catch {
+          // try next
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function computeDeviceSystemId(serialNumber = null) {
+  try {
+    if (serialNumber && String(serialNumber).trim()) {
+      return `serial:${String(serialNumber).trim().toLowerCase()}`;
+    }
+    const nets = os.networkInterfaces();
+    const macs = Object.values(nets)
+      .flat()
+      .filter(Boolean)
+      .map((entry) => entry.mac)
+      .filter((mac) => mac && mac !== "00:00:00:00:00:00")
+      .sort();
+    const cpuModel = os.cpus()?.[0]?.model ?? "unknown-cpu";
+    const raw = [
+      os.platform(),
+      os.arch(),
+      os.hostname(),
+      cpuModel,
+      ...macs,
+    ].join("|");
+    return `rrdev_${crypto.createHash("sha256").update(raw).digest("hex")}`;
+  } catch {
+    return `rrdev_fallback_${app.getPath("userData")}`;
+  }
+}
+
+function getDeviceInfo() {
+  const serialNumber = readSystemSerialNumber();
+  const deviceId = computeDeviceSystemId(serialNumber);
+  return {
+    deviceId,
+    serialNumber: serialNumber ? String(serialNumber).trim().toLowerCase() : null,
+  };
+}
 
 // -------------------------
 // BrowserWindow
@@ -306,6 +374,14 @@ ipcMain.handle("ptt.hotkeys.configure", async (_event, payload) => {
   pttCommunityContext = payload?.communityId ? String(payload.communityId) : null;
   rebuildPttGlobalShortcuts();
   return true;
+});
+
+ipcMain.handle("device.getId", async () => {
+  return getDeviceInfo().deviceId;
+});
+
+ipcMain.handle("device.getInfo", async () => {
+  return getDeviceInfo();
 });
 
 // -------------------------

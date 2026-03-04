@@ -23,6 +23,7 @@ import { useDarkMode } from "@hooks/useDarkMode";
 import { AppErrorBoundary } from "@wrappers/Error/AppErrorBoundary";
 import { IncomingVoiceProvider } from "@context/IncomingVoice";
 import { DispatchAudioProvider } from "@context/DispatchProvider";
+import axios from "axios";
 
 /* ===========================
    Fonts
@@ -137,6 +138,27 @@ export async function loader(): Promise<{ socketUrl: string | null }> {
 
 export default function Root(): JSX.Element {
   useDarkMode();
+  useEffect(() => {
+    let mounted = true;
+    const configureDispatchHeaders = async () => {
+      try {
+        const info = await window.api.device.getInfo();
+        if (!mounted) return;
+        axios.defaults.headers.common["x-dispatch-device-id"] = info.deviceId;
+        if (info.serialNumber) {
+          axios.defaults.headers.common["x-dispatch-device-serial"] =
+            info.serialNumber;
+        }
+        axios.defaults.headers.common["x-dispatch-client"] = "1";
+      } catch {
+        axios.defaults.headers.common["x-dispatch-client"] = "1";
+      }
+    };
+    void configureDispatchHeaders();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const socketUrl = useSocketLink();
 

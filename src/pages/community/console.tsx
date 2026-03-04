@@ -51,6 +51,13 @@ type CommunityData = {
   tones: QuickCall2ToneSet[];
 };
 
+type BanState = {
+  code: string;
+  message: string;
+  reason?: string | null;
+  expiresAt?: string | null;
+};
+
 type AppSettings = Awaited<ReturnType<typeof window.api.settings.get>>;
 
 type TonePacket = {
@@ -385,6 +392,9 @@ export default function CommunityConsole() {
   const { toast } = useToast();
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
+  const [banState, setBanState] = useState<BanState | null>(null);
+  const [deviceId, setDeviceId] = useState("");
+  const [deviceSerial, setDeviceSerial] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [consoleSettings, setConsoleSettings] = useState<ConsoleSettingsState>(
@@ -493,6 +503,7 @@ export default function CommunityConsole() {
   const incomingVoicePlayingRef = useRef(false);
   const hotCuePendingRef = useRef(false);
   const seenVoiceFrameEventRef = useRef(false);
+  const dispatchSessionIdRef = useRef("");
 
   const sessionRadioId = useMemo(() => {
     if (!community || !sessionUserId) return "";
@@ -502,8 +513,31 @@ export default function CommunityConsole() {
   const dispatchSource = sessionRadioId || "You";
 
   useEffect(() => {
+    let mounted = true;
+    const readDeviceId = async () => {
+      try {
+        const info = await window.api.device.getInfo();
+        if (!mounted) return;
+        setDeviceId(info.deviceId);
+        setDeviceSerial(info.serialNumber ?? null);
+      } catch {
+        // noop
+      }
+    };
+    void readDeviceId();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     channelPanicActiveRef.current = channelPanicActive;
   }, [channelPanicActive]);
+
+  useEffect(() => {
+    if (!banState) return;
+    navigate("/");
+  }, [banState, navigate]);
 
   const filteredCallHistoryItems = useMemo(
     () =>
@@ -2205,7 +2239,7 @@ export default function CommunityConsole() {
   };
 
   const fetchCallHistory = useCallback(async () => {
-    if (!communityId) return;
+    if (!communityId || banState) return;
     setCallHistoryLoading(true);
     try {
       const res = await axios.get(
@@ -2220,11 +2254,11 @@ export default function CommunityConsole() {
     } finally {
       setCallHistoryLoading(false);
     }
-  }, [communityId, toast]);
+  }, [communityId, toast, banState]);
 
   // ---------------- FETCH ----------------
   useEffect(() => {
-    if (!communityId || community) return;
+    if (!communityId || community || banState) return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -2233,8 +2267,18 @@ export default function CommunityConsole() {
           `${link("prod")}/api/communities/${communityId}`,
           {
             withCredentials: true,
+            headers: deviceId
+              ? {
+                  "x-dispatch-device-id": deviceId,
+                  ...(deviceSerial
+                    ? { "x-dispatch-device-serial": deviceSerial }
+                    : {}),
+                  "x-dispatch-client": "1",
+                }
+              : { "x-dispatch-client": "1" },
           },
         );
+        setBanState(null);
         setCommunity(res.data.community);
         setSessionUserId(res.data?.user?.id ?? "");
 
@@ -2253,7 +2297,22 @@ export default function CommunityConsole() {
           initial[t.id] = parsePosition(t.pos);
         });
         setPositions(initial);
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.response?.status === 403) {
+          const payload = err?.response?.data ?? {};
+          const ban = payload?.ban ?? null;
+          setBanState({
+            code: String(payload?.code ?? "FORBIDDEN"),
+            message: String(
+              payload?.message ?? "Access to this console is restricted.",
+            ),
+            reason: ban?.reason ?? null,
+            expiresAt: ban?.expiresAt ?? null,
+          });
+          toast("Access denied for this community console.", { type: "error" });
+          navigate("/");
+          return;
+        }
         console.error(err);
       } finally {
         setLoading(false);
@@ -2261,18 +2320,94 @@ export default function CommunityConsole() {
     };
 
     fetchData();
-  }, [communityId, community, setLoading]);
+  }, [
+    communityId,
+    community,
+    setLoading,
+    banState,
+    deviceId,
+    deviceSerial,
+    navigate,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (!communityId || !community || !sessionUserId || !deviceId || banState) return;
+    const headers = deviceId
+      ? {
+          "x-dispatch-device-id": deviceId,
+          ...(deviceSerial ? { "x-dispatch-device-serial": deviceSerial } : {}),
+          "x-dispatch-client": "1",
+        }
+      : { "x-dispatch-client": "1" };
+    let heartbeatTimer: number | null = null;
+    let ended = false;
+    let liveSessionId = "";
+
+    const sendSessionEvent = async (
+      event: "start" | "heartbeat" | "end",
+      sessionId?: string,
+      endedReason?: string,
+    ) => {
+      const res = await axios.post(
+        `${link("prod")}/api/dispatch/sessions`,
+        {
+          event,
+          sessionId,
+          communityId,
+          source: "Dispatch Console",
+          platform: navigator.platform,
+          endedReason,
+        },
+        {
+          withCredentials: true,
+          headers,
+        },
+      );
+      return res.data;
+    };
+
+    const start = async () => {
+      try {
+        const data = await sendSessionEvent("start");
+        liveSessionId = String(data?.sessionId || "");
+        if (!liveSessionId) return;
+        dispatchSessionIdRef.current = liveSessionId;
+        heartbeatTimer = window.setInterval(() => {
+          if (ended || !liveSessionId) return;
+          void sendSessionEvent("heartbeat", liveSessionId);
+        }, 30000);
+      } catch {
+        // noop
+      }
+    };
+    void start();
+
+    return () => {
+      ended = true;
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      if (liveSessionId) {
+        void sendSessionEvent("end", liveSessionId, "community-console-unmount");
+      }
+      dispatchSessionIdRef.current = "";
+    };
+  }, [communityId, community, sessionUserId, banState, deviceId, deviceSerial]);
 
   // ---------------- SOCKET JOIN + EVENTS ----------------
   useEffect(() => {
-    if (!socket || !communityId) return;
+    if (!socket || !communityId || !sessionUserId || !deviceId || banState) return;
 
     debugLog("socket-effect:mount", {
       communityId,
       socketId: socket.id,
       listenedChannelIds,
     });
-    socket.emit("dispatch:join", { communityId, source: "Dispatch Console" });
+    socket.emit("dispatch:join", {
+      communityId,
+      source: "Dispatch Console",
+      userId: sessionUserId,
+      deviceId,
+    });
     socket.emit("dispatch:peer-id", {
       communityId,
       peerId: socket.id,
@@ -2321,6 +2456,21 @@ export default function CommunityConsole() {
           })),
         );
       }
+    };
+
+    const onDispatchBan = (event: {
+      code?: string;
+      ban?: { reason?: string | null; expiresAt?: string | null };
+    }) => {
+      if (!event?.code) return;
+      setBanState({
+        code: event.code,
+        message: "Access to this console is restricted.",
+        reason: event?.ban?.reason ?? null,
+        expiresAt: event?.ban?.expiresAt ?? null,
+      });
+      toast("Access denied for this community console.", { type: "error" });
+      navigate("/");
     };
 
     const onPeerId = (event: {
@@ -2570,6 +2720,7 @@ export default function CommunityConsole() {
 
     socket.on("dispatch:ptt", onPtt);
     socket.on("dispatch:user", onDispatchUser);
+    socket.on("dispatch:ban", onDispatchBan);
     socket.on("dispatch:peer-id", onPeerId);
     socket.on("dispatch:tone", onTone);
     socket.on("dispatch:last-src", onLastSrc);
@@ -2587,6 +2738,7 @@ export default function CommunityConsole() {
       stopVoiceCapture();
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:user", onDispatchUser);
+      socket.off("dispatch:ban", onDispatchBan);
       socket.off("dispatch:peer-id", onPeerId);
       socket.off("dispatch:tone", onTone);
       socket.off("dispatch:last-src", onLastSrc);
@@ -2607,6 +2759,9 @@ export default function CommunityConsole() {
     consoleSettings.outputDeviceId,
     listenedChannelIds,
     applyWebRtcAudioForSocket,
+    sessionUserId,
+    deviceId,
+    banState,
   ]);
 
   useEffect(() => {
@@ -3350,6 +3505,8 @@ export default function CommunityConsole() {
       }
     };
   }, []);
+
+  if (banState) return null;
 
   if (!community) return null;
 

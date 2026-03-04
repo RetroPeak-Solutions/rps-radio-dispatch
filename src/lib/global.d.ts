@@ -186,6 +186,14 @@ declare global {
         }) => void) => () => void;
         removeListeners: () => void;
       };
+
+      device: {
+        getId: () => Promise<string>;
+        getInfo: () => Promise<{
+          deviceId: string;
+          serialNumber: string | null;
+        }>;
+      };
     };
   }
 }
