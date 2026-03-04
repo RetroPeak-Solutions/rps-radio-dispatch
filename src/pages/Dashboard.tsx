@@ -15,6 +15,7 @@ export default function DashboardPage() {
     const navigate = useNavigate();
     const [user, setUser] = useState<User | undefined>();
     const [memberships, setMemberships] = useState<any[]>([]);
+    const [bansByCommunityId, setBansByCommunityId] = useState<Record<string, any>>({});
 
     const [menu, setMenu] = useState<{
         x: number;
@@ -69,6 +70,7 @@ export default function DashboardPage() {
             } else {
                 setMemberships(data.memberships);
             }
+            setBansByCommunityId(data?.bansByCommunityId ?? {});
         } finally {
             setLoading(false);
         }
@@ -123,12 +125,19 @@ export default function DashboardPage() {
                 </ModernCard>
             ) : (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 mt-4">
-                    {filteredMemberships.map((membership) => (
+                    {filteredMemberships.map((membership) => {
+                        const communityBan = bansByCommunityId?.[membership.communityId] ?? null;
+                        const isBanned = Boolean(communityBan);
+                        return (
                         <div
                             key={membership.id}
-                            onClick={() => navigate(`/${membership.communityId}/console`)}
+                            onClick={() => {
+                                if (isBanned) return;
+                                navigate(`/${membership.communityId}/console`);
+                            }}
                             onContextMenu={(event) => {
                                 event.preventDefault();
+                                if (isBanned) return;
                                 setMenu({
                                     x: event.clientX,
                                     y: event.clientY,
@@ -136,7 +145,7 @@ export default function DashboardPage() {
                                     communityOwner: membership.role === "OWNER",
                                 });
                             }}
-                            className="cursor-pointer"
+                            className={isBanned ? "cursor-not-allowed opacity-70" : "cursor-pointer"}
                         >
                             <ModernCard hoverScale={1.02} contentClassName="space-y-3">
                                 <div className="flex items-start justify-between">
@@ -153,10 +162,17 @@ export default function DashboardPage() {
                                     <p>
                                         <span className="text-gray-400">Radio ID:</span> {membership.radioId || "N/A"}
                                     </p>
+                                    {isBanned ? (
+                                        <p className="text-red-300">
+                                            <span className="text-red-400">Access:</span> Banned
+                                            {communityBan?.reason ? ` • ${communityBan.reason}` : ""}
+                                        </p>
+                                    ) : null}
                                 </div>
                             </ModernCard>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 

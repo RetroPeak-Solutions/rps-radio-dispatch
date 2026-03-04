@@ -26,7 +26,7 @@ import { AppErrorBoundary } from "@wrappers/Error/AppErrorBoundary";
 import { IncomingVoiceProvider } from "@context/IncomingVoice";
 import { DispatchAudioProvider } from "@context/DispatchProvider";
 import axios from "axios";
-import { AuthUser } from "@utils/link";
+import link, { AuthUser } from "@utils/link";
 import AuthPageWrapper from "./Wrappers/Page/AuthPageWrapper";
 
 /* ===========================
@@ -151,11 +151,18 @@ export default function Root(): JSX.Element {
   } | null>(null);
 
   const applyBanPayload = (payload: any) => {
-    if (!payload?.code || !String(payload.code).includes("BANNED")) return;
+    const code = String(payload?.code ?? "");
+    if (!code) return;
+    if (!code.includes("BANNED") && code !== "EMAIL_UNVERIFIED") return;
     const ban = payload?.ban ?? {};
     setGlobalBan({
-      code: String(payload.code),
-      message: String(payload.message ?? "Access to this app is restricted."),
+      code,
+      message: String(
+        payload.message ??
+          (code === "EMAIL_UNVERIFIED"
+            ? "Please verify your email before using dispatch features."
+            : "Access to this app is restricted."),
+      ),
       reason: ban?.reason ?? null,
       expiresAt: ban?.expiresAt ?? null,
       communityName: payload?.community?.name ?? null,
@@ -213,6 +220,87 @@ export default function Root(): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    let ended = false;
+    let heartbeatTimer: number | null = null;
+    const localHeaders: Record<string, string> = {
+      "x-dispatch-client": "1",
+    };
+    let liveSessionId = "";
+
+    const sendSessionEvent = async (
+      event: "start" | "heartbeat" | "end",
+      sessionId?: string,
+      endedReason?: string,
+    ) => {
+      const res = await axios.post(
+        `${link("prod")}/api/dispatch/sessions`,
+        {
+          event,
+          sessionId,
+          source: "Dispatch App",
+          platform: navigator.platform,
+          endedReason,
+        },
+        {
+          withCredentials: true,
+          headers: localHeaders,
+        },
+      );
+      return res.data;
+    };
+
+    const startAppSession = async () => {
+      try {
+        const info = await window.api.device.getInfo();
+        localHeaders["x-dispatch-device-id"] = info.deviceId;
+        if (info.serialNumber) {
+          localHeaders["x-dispatch-device-serial"] = info.serialNumber;
+        }
+      } catch {
+        // noop
+      }
+
+      try {
+        const authRes = await axios.get(AuthUser(), {
+          withCredentials: true,
+          headers: localHeaders,
+        });
+        if (!authRes?.data?.user?.id) return;
+      } catch {
+        return;
+      }
+
+      try {
+        const data = await sendSessionEvent("start");
+        liveSessionId = String(data?.sessionId || "");
+        if (!liveSessionId) return;
+        heartbeatTimer = window.setInterval(() => {
+          if (ended || !liveSessionId) return;
+          void sendSessionEvent("heartbeat", liveSessionId).catch((err) => {
+            console.error("[DispatchSession] heartbeat failed:", err);
+          });
+        }, 30000);
+      } catch (err) {
+        console.error("[DispatchSession] start failed:", err);
+      }
+    };
+
+    void startAppSession();
+
+    return () => {
+      ended = true;
+      if (heartbeatTimer) window.clearInterval(heartbeatTimer);
+      if (liveSessionId) {
+        void sendSessionEvent("end", liveSessionId, "dispatch-app-unmount").catch(
+          (err) => {
+            console.error("[DispatchSession] end failed:", err);
+          },
+        );
+      }
+    };
+  }, []);
+
   const socketUrl = useSocketLink();
 
   return (
@@ -231,34 +319,45 @@ export default function Root(): JSX.Element {
                           Access Restricted
                         </h1>
                         <h2 className="text-xl font-bold text-red-200">
-                          {globalBan.communityName
-                            ? `${globalBan.communityName} Access Banned`
-                            : globalBan.code === "SYSTEM_BANNED"
-                              ? "System Account Banned"
-                              : globalBan.code === "DEVICE_BANNED"
-                                ? "Dispatch Device Banned"
-                                : "Access Banned"}
+                          {globalBan.code === "EMAIL_UNVERIFIED"
+                            ? "Email Verification Required"
+                            : globalBan.communityName
+                              ? `${globalBan.communityName} Access Banned`
+                              : globalBan.code === "SYSTEM_BANNED"
+                                ? "System Account Banned"
+                                : globalBan.code === "DEVICE_BANNED"
+                                  ? "Dispatch Device Banned"
+                                  : "Access Banned"}
                         </h2>
                         <p className="text-sm text-red-100/90">
                           {globalBan.message}
                         </p>
-                        {globalBan.reason ? (
+                        {globalBan.code === "EMAIL_UNVERIFIED" ? (
                           <p className="text-sm text-red-100/90">
-                            <span className="text-red-300">Reason:</span>{" "}
-                            {globalBan.reason}
+                            Verify your email from the verification link, then re-open the app.
                           </p>
                         ) : null}
-                        {globalBan.expiresAt ? (
-                          <p className="text-sm text-red-100/90">
-                            <span className="text-red-300">Expires:</span>{" "}
-                            {new Date(globalBan.expiresAt).toLocaleString()}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-red-100/90">
-                            <span className="text-red-300">Duration:</span>{" "}
-                            Permanent
-                          </p>
-                        )}
+                        {globalBan.code !== "EMAIL_UNVERIFIED" ? (
+                          <>
+                            {globalBan.reason ? (
+                              <p className="text-sm text-red-100/90">
+                                <span className="text-red-300">Reason:</span>{" "}
+                                {globalBan.reason}
+                              </p>
+                            ) : null}
+                            {globalBan.expiresAt ? (
+                              <p className="text-sm text-red-100/90">
+                                <span className="text-red-300">Expires:</span>{" "}
+                                {new Date(globalBan.expiresAt).toLocaleString()}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-red-100/90">
+                                <span className="text-red-300">Duration:</span>{" "}
+                                Permanent
+                              </p>
+                            )}
+                          </>
+                        ) : null}
                       </div>
                     </div>
                   </AuthPageWrapper>

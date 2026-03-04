@@ -1522,12 +1522,12 @@ export default function CommunityConsole() {
 
   const sensors = useSensors(useSensor(PointerSensor));
   const sortedZones = useMemo(
-    () =>
-      community
-        ? [...community.radioZones].sort(
-          (a, b) => a.codeplugIndex - b.codeplugIndex,
-        )
-        : [],
+    () => {
+      const zones = Array.isArray(community?.radioZones)
+        ? community.radioZones
+        : [];
+      return [...zones].sort((a, b) => a.codeplugIndex - b.codeplugIndex);
+    },
     [community],
   );
   const activeZone = sortedZones[activeZoneIndex];
