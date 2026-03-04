@@ -8,7 +8,6 @@ import {
 } from "react-router";
 import "@src/index.css";
 import React, {
-  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -16,7 +15,6 @@ import React, {
 } from "react";
 import { ThemeProvider } from "flowbite-react";
 import { SocketProvider } from "./context/SocketProvider";
-import { useSocket } from "./context/SocketProvider";
 import { ToastProvider } from "./context/ToastProvider";
 import { useLoading } from "./context/Loading";
 import { SocketLink } from "@utils/link";
@@ -27,7 +25,7 @@ import { IncomingVoiceProvider } from "@context/IncomingVoice";
 import { DispatchAudioProvider } from "@context/DispatchProvider";
 import axios from "axios";
 import link, { AuthUser } from "@utils/link";
-import AuthPageWrapper from "./Wrappers/Page/AuthPageWrapper";
+import { BanStateProvider } from "@context/BanState";
 
 /* ===========================
    Fonts
@@ -142,68 +140,7 @@ export async function loader(): Promise<{ socketUrl: string | null }> {
 
 export default function Root(): JSX.Element {
   useDarkMode();
-  const [globalBan, setGlobalBan] = useState<{
-    code: string;
-    message: string;
-    reason?: string | null;
-    expiresAt?: string | null;
-    communityName?: string | null;
-  } | null>(null);
   const [realtimeDeviceId, setRealtimeDeviceId] = useState<string>("");
-
-  const applyBanPayload = (payload: any) => {
-    const code = String(payload?.code ?? "");
-    if (!code) return;
-    if (!code.includes("BANNED") && code !== "EMAIL_UNVERIFIED") return;
-    const ban = payload?.ban ?? {};
-    setGlobalBan({
-      code,
-      message: String(
-        payload.message ??
-          (code === "EMAIL_UNVERIFIED"
-            ? "Please verify your email before using dispatch features."
-            : "Access to this app is restricted."),
-      ),
-      reason: ban?.reason ?? null,
-      expiresAt: ban?.expiresAt ?? null,
-      communityName: payload?.community?.name ?? null,
-    });
-  };
-
-  const applyRealtimeBanEvent = useCallback((event: any) => {
-    const code = String(event?.code ?? "");
-    if (!code || !code.includes("BANNED")) return;
-    const isUnban = event?.action === "unbanned";
-    if (isUnban) {
-      setGlobalBan(null);
-      return;
-    }
-    setGlobalBan({
-      code,
-      message:
-        code === "SYSTEM_BANNED"
-          ? "This account is banned from the system."
-          : code === "DEVICE_BANNED"
-            ? "This dispatch device is banned."
-            : "Access to this app is restricted.",
-      reason: event?.reason ?? null,
-      expiresAt: event?.expiresAt ?? null,
-      communityName: null,
-    });
-  }, []);
-
-  const refreshBanState = useCallback(async () => {
-    try {
-      await axios.get(AuthUser(), { withCredentials: true });
-      setGlobalBan(null);
-    } catch (err: any) {
-      if (err?.response?.status === 403) {
-        applyBanPayload(err?.response?.data);
-      } else if (err?.response?.status === 401) {
-        setGlobalBan(null);
-      }
-    }
-  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -226,23 +163,8 @@ export default function Root(): JSX.Element {
     };
     void configureDispatchHeaders();
 
-    const interceptorId = axios.interceptors.response.use(
-      (response) => response,
-      (error) => {
-        const status = error?.response?.status;
-        const payload = error?.response?.data;
-        if (status === 403) {
-          applyBanPayload(payload);
-        }
-        return Promise.reject(error);
-      },
-    );
-
-    void refreshBanState();
-
     return () => {
       mounted = false;
-      axios.interceptors.response.eject(interceptorId);
     };
   }, []);
 
@@ -333,110 +255,19 @@ export default function Root(): JSX.Element {
     <AppErrorBoundary>
       <ThemeProvider>
         <SocketProvider url={useSocketLink() ?? socketUrl}>
-          <RealtimeBanBridge
-            onRefresh={refreshBanState}
-            onBanEvent={applyRealtimeBanEvent}
-            deviceId={realtimeDeviceId}
-          />
-          <ToastProvider>
-            <IncomingVoiceProvider>
-              <DispatchAudioProvider>
-                {globalBan ? (
-                  <AuthPageWrapper>
-                    <div className="min-h-screen bg-[#0B1220] text-white font-mono flex items-center justify-center p-6">
-                      <div className="w-full max-w-xl rounded-2xl border border-red-500/40 bg-[#1A0F14] p-6 space-y-4">
-                        <h1 className="text-2xl uppercase tracking-wide text-red-300/80">
-                          Access Restricted
-                        </h1>
-                        <h2 className="text-xl font-bold text-red-200">
-                          {globalBan.code === "EMAIL_UNVERIFIED"
-                            ? "Email Verification Required"
-                            : globalBan.communityName
-                              ? `${globalBan.communityName} Access Banned`
-                              : globalBan.code === "SYSTEM_BANNED"
-                                ? "System Account Banned"
-                                : globalBan.code === "DEVICE_BANNED"
-                                  ? "Dispatch Device Banned"
-                                  : "Access Banned"}
-                        </h2>
-                        <p className="text-sm text-red-100/90">
-                          {globalBan.message}
-                        </p>
-                        {globalBan.code === "EMAIL_UNVERIFIED" ? (
-                          <p className="text-sm text-red-100/90">
-                            Verify your email from the verification link, then re-open the app.
-                          </p>
-                        ) : null}
-                        {globalBan.code !== "EMAIL_UNVERIFIED" ? (
-                          <>
-                            {globalBan.reason ? (
-                              <p className="text-sm text-red-100/90">
-                                <span className="text-red-300">Reason:</span>{" "}
-                                {globalBan.reason}
-                              </p>
-                            ) : null}
-                            {globalBan.expiresAt ? (
-                              <p className="text-sm text-red-100/90">
-                                <span className="text-red-300">Expires:</span>{" "}
-                                {new Date(globalBan.expiresAt).toLocaleString()}
-                              </p>
-                            ) : (
-                              <p className="text-sm text-red-100/90">
-                                <span className="text-red-300">Duration:</span>{" "}
-                                Permanent
-                              </p>
-                            )}
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                  </AuthPageWrapper>
-                ) : (
+          <BanStateProvider deviceId={realtimeDeviceId}>
+            <ToastProvider>
+              <IncomingVoiceProvider>
+                <DispatchAudioProvider>
                   <AppRoutes />
-                )}
-              </DispatchAudioProvider>
-            </IncomingVoiceProvider>
-          </ToastProvider>
+                </DispatchAudioProvider>
+              </IncomingVoiceProvider>
+            </ToastProvider>
+          </BanStateProvider>
         </SocketProvider>
       </ThemeProvider>
     </AppErrorBoundary>
   );
-}
-
-function RealtimeBanBridge({
-  onRefresh,
-  onBanEvent,
-  deviceId,
-}: {
-  onRefresh: () => Promise<void>;
-  onBanEvent: (event: any) => void;
-  deviceId: string;
-}) {
-  const { socket } = useSocket();
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const register = () => {
-      socket.emit("console:register", { deviceId: deviceId || null });
-    };
-    register();
-    socket.on("connect", register);
-
-    const onBanState = (event: { action?: "banned" | "unbanned"; code?: string }) => {
-      if (!event?.action || !event?.code) return;
-      onBanEvent(event);
-      void onRefresh();
-    };
-
-    socket.on("console:ban-state", onBanState);
-    return () => {
-      socket.off("connect", register);
-      socket.off("console:ban-state", onBanState);
-    };
-  }, [socket, onRefresh, onBanEvent, deviceId]);
-
-  return null;
 }
 
 /* ===========================

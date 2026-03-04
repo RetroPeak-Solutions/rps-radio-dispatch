@@ -32,11 +32,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, url })
       transports: ["websocket", "polling"],
     });
 
-    // setSocket(socketClient);
+    // expose immediately so consumers can bind listeners before first connect/events
+    setSocket(socketClient);
 
     const onConnect = () => {
       setConnected(true);
-      setSocket(socketClient);
       // socketClient?.
       console.log('[SocketProvider] Connected Url:', url);
       console.log("[SocketProvider] Connected:", socketClient.id);

@@ -196,10 +196,11 @@ const createWindow = () => {
     // titleBarStyle: "hidden",
     // ...(process.platform !== 'darwin' ? { titleBarOverlay: true } : { titleBarOverlay: true }),
     webPreferences: {
-      sandbox: false,
       // sandbox: nodeEnv === "production", // sandbox only in production for security
+      sandbox: false,
       webSecurity: nodeEnv === "production", // disable in development for easier testing
-      devTools: nodeEnv === "development",
+      devTools: true,
+      // devTools: nodeEnv === "development",
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.resolve(__dirname, "preload.js"), // preload script

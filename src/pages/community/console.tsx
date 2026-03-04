@@ -17,6 +17,7 @@ import {
 import { useLoading } from "@context/Loading";
 import { useSocket } from "@context/SocketProvider";
 import { useToast } from "@context/ToastProvider";
+import { useBanState } from "@context/BanState";
 import axios from "axios";
 import link from "@utils/link";
 import playQuickCall2 from "@utils/playQC2Tone";
@@ -49,13 +50,6 @@ type CommunityData = {
   radioZones: RadioZone[];
   radioChannels: RadioChannel[];
   tones: QuickCall2ToneSet[];
-};
-
-type BanState = {
-  code: string;
-  message: string;
-  reason?: string | null;
-  expiresAt?: string | null;
 };
 
 type AppSettings = Awaited<ReturnType<typeof window.api.settings.get>>;
@@ -390,9 +384,9 @@ export default function CommunityConsole() {
   const { setLoading } = useLoading();
   const { socket } = useSocket();
   const { toast } = useToast();
+  const { communityBans, setCommunityBan, clearCommunityBan } = useBanState();
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
-  const [banState, setBanState] = useState<BanState | null>(null);
   const [deviceId, setDeviceId] = useState("");
   const [deviceSerial, setDeviceSerial] = useState<string | null>(null);
   const [sessionUserId, setSessionUserId] = useState("");
@@ -463,6 +457,7 @@ export default function CommunityConsole() {
     "VOICE" | "TONE"
   >("VOICE");
   const [callHistoryPage, setCallHistoryPage] = useState(1);
+  const banState = communityId ? (communityBans[communityId] ?? null) : null;
 
   const dragStartPos = useRef<Record<string, { x: number; y: number }>>({});
   const canvasRef = useRef<HTMLDivElement | null>(null);
@@ -505,6 +500,7 @@ export default function CommunityConsole() {
   const hotCuePendingRef = useRef(false);
   const seenVoiceFrameEventRef = useRef(false);
   const dispatchSessionIdRef = useRef("");
+  const baseDevicePixelRatioRef = useRef(0);
 
   const sessionRadioId = useMemo(() => {
     if (!community || !sessionUserId) return "";
@@ -2274,7 +2270,7 @@ export default function CommunityConsole() {
               : { "x-dispatch-client": "1" },
           },
         );
-        setBanState(null);
+        clearCommunityBan(communityId);
         setCommunity(res.data.community);
         setSessionUserId(res.data?.user?.id ?? "");
 
@@ -2303,7 +2299,7 @@ export default function CommunityConsole() {
           if (payload?.user?.id) {
             setSessionUserId(String(payload.user.id));
           }
-          setBanState({
+          setCommunityBan(communityId, {
             code: String(payload?.code ?? "FORBIDDEN"),
             message: String(
               payload?.message ?? "Access to this console is restricted.",
@@ -2396,25 +2392,27 @@ export default function CommunityConsole() {
 
   // ---------------- SOCKET JOIN + EVENTS ----------------
   useEffect(() => {
-    if (!socket || !communityId || !sessionUserId || !deviceId || banState) return;
+    if (!socket || !communityId || !sessionUserId || !deviceId) return;
 
-    debugLog("socket-effect:mount", {
-      communityId,
-      socketId: socket.id,
-      listenedChannelIds,
-    });
-    socket.emit("dispatch:join", {
-      communityId,
-      source: "Dispatch Console",
-      userId: sessionUserId,
-      deviceId,
-    });
-    socket.emit("dispatch:peer-id", {
-      communityId,
-      peerId: socket.id,
-      socketId: socket.id,
-      channelIds: listenedChannelIds,
-    });
+    if (!banState) {
+      debugLog("socket-effect:mount", {
+        communityId,
+        socketId: socket.id,
+        listenedChannelIds,
+      });
+      socket.emit("dispatch:join", {
+        communityId,
+        source: "Dispatch Console",
+        userId: sessionUserId,
+        deviceId,
+      });
+      socket.emit("dispatch:peer-id", {
+        communityId,
+        peerId: socket.id,
+        socketId: socket.id,
+        channelIds: listenedChannelIds,
+      });
+    }
 
     const onDispatchUser = (event: {
       type?: "join" | "leave";
@@ -2464,6 +2462,7 @@ export default function CommunityConsole() {
       userId?: string;
       ban?: { reason?: string | null; expiresAt?: string | null };
     }) => {
+      console.log("[Ban State Event]: Dispatch Banned")
       if (!event?.code) return;
       if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
       const activeChannels = [...activePttChannelsRef.current];
@@ -2476,7 +2475,7 @@ export default function CommunityConsole() {
       setActivePttIndicator(null);
       setChannelTransmitting({});
       setChannelToneTransmitting({});
-      setBanState({
+      setCommunityBan(communityId, {
         code: event.code,
         message: "Access to this console is restricted.",
         reason: event?.ban?.reason ?? null,
@@ -2495,7 +2494,7 @@ export default function CommunityConsole() {
       if (!event?.action || !event?.code) return;
       if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
       if (event.action === "unbanned") {
-        setBanState(null);
+        clearCommunityBan(communityId);
         return;
       }
       const activeChannels = [...activePttChannelsRef.current];
@@ -2508,7 +2507,7 @@ export default function CommunityConsole() {
       setActivePttIndicator(null);
       setChannelTransmitting({});
       setChannelToneTransmitting({});
-      setBanState({
+      setCommunityBan(communityId, {
         code: event.code,
         message: "Access to this console is restricted.",
         reason: event.reason ?? null,
@@ -2520,8 +2519,9 @@ export default function CommunityConsole() {
     const onDispatchBanCleared = (event: {
       userId?: string;
     }) => {
+      console.log("[Ban State Event]: Dispatch Unbanned")
       if (event?.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
-      setBanState(null);
+      clearCommunityBan(communityId);
     };
 
     const onPeerId = (event: {
@@ -3285,17 +3285,35 @@ export default function CommunityConsole() {
   }, [activeZoneIndex, community?.id]);
 
   useEffect(() => {
+    if (!baseDevicePixelRatioRef.current) {
+      const initialDpr =
+        typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
+          ? window.devicePixelRatio
+          : 1;
+      baseDevicePixelRatioRef.current = Math.max(1, initialDpr || 1);
+    }
+
     const readScale = () => {
       const vv = window.visualViewport;
-      const scale = vv?.scale ?? 1;
-      setViewportScale(Number.isFinite(scale) && scale > 0 ? scale : 1);
+      const vvScale = vv?.scale ?? 1;
+      const baseDpr = baseDevicePixelRatioRef.current || 1;
+      const currentDpr = Number.isFinite(window.devicePixelRatio)
+        ? window.devicePixelRatio
+        : baseDpr;
+      const dprScale = currentDpr > 0 ? currentDpr / baseDpr : 1;
+      const combinedScale = vvScale * dprScale;
+      setViewportScale(
+        Number.isFinite(combinedScale) && combinedScale > 0 ? combinedScale : 1,
+      );
     };
     readScale();
     window.addEventListener("resize", readScale);
     window.visualViewport?.addEventListener("resize", readScale);
+    const poll = window.setInterval(readScale, 300);
     return () => {
       window.removeEventListener("resize", readScale);
       window.visualViewport?.removeEventListener("resize", readScale);
+      window.clearInterval(poll);
     };
   }, []);
 
@@ -3351,9 +3369,16 @@ export default function CommunityConsole() {
       canvasWidth || canvasRef.current?.offsetWidth || 0,
       CARD_WIDTH + CARD_SPACING * 2,
     );
+    const effectiveWidth = Math.max(
+      CARD_WIDTH + CARD_SPACING * 2,
+      width / Math.max(1, viewportScale),
+    );
     const stepX = CARD_WIDTH + CARD_SPACING;
     const stepY = CARD_HEIGHT + CARD_SPACING;
-    const columns = Math.max(1, Math.floor((width - CARD_SPACING) / stepX));
+    const columns = Math.max(
+      1,
+      Math.floor((effectiveWidth - CARD_SPACING) / stepX),
+    );
     const itemIds = [
       ...(activeZone.channels?.map((c) => c.id) ?? []),
       ...(activeZone.toneSets?.map((t) => t.id) ?? []),
@@ -3385,7 +3410,7 @@ export default function CommunityConsole() {
     );
     const zoomedIn = viewportScale > 1.02;
     const shouldAutoWrap =
-      !editMode && zoomedIn && savedLayoutMaxRight > width - CARD_SPACING;
+      !editMode && zoomedIn && savedLayoutMaxRight > effectiveWidth - CARD_SPACING;
 
     if (shouldAutoWrap) {
       setAutoWrapLayout(fallbackByIndex);
@@ -3864,7 +3889,7 @@ export default function CommunityConsole() {
             ))}
           </Tab.List>
 
-          <Tab.Panels className="fixed top-[166px] bottom-0 w-full overflow-y-auto overflow-x-hidden">
+          <Tab.Panels className="fixed top-41.5 bottom-0 w-full overflow-y-auto overflow-x-hidden">
             {sortedZones.map((zone, zoneIndex) => (
               <Tab.Panel key={zone.id} className="min-h-full">
                 <div
