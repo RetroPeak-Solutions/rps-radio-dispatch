@@ -120,7 +120,7 @@ export default function DashboardPage() {
             </ModernCard>
 
             {filteredMemberships.length === 0 ? (
-                <ModernCard className="mt-4">
+                <ModernCard className="mt-4" hoverScale={1}>
                     <p className="text-gray-400">No communities matched your search.</p>
                 </ModernCard>
             ) : (
