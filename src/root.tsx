@@ -149,6 +149,7 @@ export default function Root(): JSX.Element {
     expiresAt?: string | null;
     communityName?: string | null;
   } | null>(null);
+  const [realtimeDeviceId, setRealtimeDeviceId] = useState<string>("");
 
   const applyBanPayload = (payload: any) => {
     const code = String(payload?.code ?? "");
@@ -169,6 +170,28 @@ export default function Root(): JSX.Element {
     });
   };
 
+  const applyRealtimeBanEvent = useCallback((event: any) => {
+    const code = String(event?.code ?? "");
+    if (!code || !code.includes("BANNED")) return;
+    const isUnban = event?.action === "unbanned";
+    if (isUnban) {
+      setGlobalBan(null);
+      return;
+    }
+    setGlobalBan({
+      code,
+      message:
+        code === "SYSTEM_BANNED"
+          ? "This account is banned from the system."
+          : code === "DEVICE_BANNED"
+            ? "This dispatch device is banned."
+            : "Access to this app is restricted.",
+      reason: event?.reason ?? null,
+      expiresAt: event?.expiresAt ?? null,
+      communityName: null,
+    });
+  }, []);
+
   const refreshBanState = useCallback(async () => {
     try {
       await axios.get(AuthUser(), { withCredentials: true });
@@ -188,6 +211,7 @@ export default function Root(): JSX.Element {
       try {
         const info = await window.api.device.getInfo();
         if (!mounted) return;
+        setRealtimeDeviceId(String(info.deviceId || ""));
         axios.defaults.headers.common["x-dispatch-device-id"] = info.deviceId;
         if (info.serialNumber) {
           axios.defaults.headers.common["x-dispatch-device-serial"] =
@@ -195,6 +219,8 @@ export default function Root(): JSX.Element {
         }
         axios.defaults.headers.common["x-dispatch-client"] = "1";
       } catch {
+        if (!mounted) return;
+        setRealtimeDeviceId("");
         axios.defaults.headers.common["x-dispatch-client"] = "1";
       }
     };
@@ -307,7 +333,11 @@ export default function Root(): JSX.Element {
     <AppErrorBoundary>
       <ThemeProvider>
         <SocketProvider url={useSocketLink() ?? socketUrl}>
-          <RealtimeBanBridge onRefresh={refreshBanState} />
+          <RealtimeBanBridge
+            onRefresh={refreshBanState}
+            onBanEvent={applyRealtimeBanEvent}
+            deviceId={realtimeDeviceId}
+          />
           <ToastProvider>
             <IncomingVoiceProvider>
               <DispatchAudioProvider>
@@ -373,29 +403,38 @@ export default function Root(): JSX.Element {
   );
 }
 
-function RealtimeBanBridge({ onRefresh }: { onRefresh: () => Promise<void> }) {
+function RealtimeBanBridge({
+  onRefresh,
+  onBanEvent,
+  deviceId,
+}: {
+  onRefresh: () => Promise<void>;
+  onBanEvent: (event: any) => void;
+  deviceId: string;
+}) {
   const { socket } = useSocket();
 
   useEffect(() => {
     if (!socket) return;
 
     const register = () => {
-      socket.emit("auth:register");
+      socket.emit("console:register", { deviceId: deviceId || null });
     };
     register();
     socket.on("connect", register);
 
     const onBanState = (event: { action?: "banned" | "unbanned"; code?: string }) => {
       if (!event?.action || !event?.code) return;
+      onBanEvent(event);
       void onRefresh();
     };
 
-    socket.on("auth:ban-state", onBanState);
+    socket.on("console:ban-state", onBanState);
     return () => {
       socket.off("connect", register);
-      socket.off("auth:ban-state", onBanState);
+      socket.off("console:ban-state", onBanState);
     };
-  }, [socket, onRefresh]);
+  }, [socket, onRefresh, onBanEvent, deviceId]);
 
   return null;
 }

@@ -32,6 +32,8 @@ let win = null;
 let pttCommunityContext = null;
 let pttReleaseTimer = null;
 const registeredPttHotkeys = new Map();
+let lastUpdateInfo = null;
+let downloadInFlight = false;
 
 // Path to persistent settings
 const settingsPath = path.join(app.getPath("userData"), "settings.json");
@@ -131,6 +133,54 @@ function getDeviceInfo() {
     deviceId,
     serialNumber: serialNumber ? String(serialNumber).trim().toLowerCase() : null,
   };
+}
+
+const GITHUB_OWNER = "RetroPeak-Solutions";
+const GITHUB_REPO = "rps-radio-dispatch";
+
+function stripVersionPrefix(versionValue) {
+  return String(versionValue || "").trim().replace(/^v/i, "");
+}
+
+function githubApiHeaders() {
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": `${app.getName()}/${app.getVersion()}`,
+  };
+  if (process.env.GH_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GH_TOKEN}`;
+  }
+  return headers;
+}
+
+async function fetchLatestGithubRelease() {
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+  const res = await axios.get(url, { headers: githubApiHeaders() });
+  return res?.data ?? null;
+}
+
+function emitUpdateStatus(payload) {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.send("update-status", payload);
+}
+
+function releaseNotesToString(releaseNotes) {
+  if (!releaseNotes) return "";
+  if (typeof releaseNotes === "string") return releaseNotes;
+  if (Array.isArray(releaseNotes)) {
+    return releaseNotes
+      .map((note) => {
+        if (typeof note === "string") return note;
+        if (!note) return "";
+        const versionPart = note.version ? `## ${note.version}\n` : "";
+        const notePart = note.note ? `${note.note}` : "";
+        return `${versionPart}${notePart}`.trim();
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  return "";
 }
 
 // -------------------------
@@ -389,26 +439,56 @@ ipcMain.handle("device.getInfo", async () => {
 // -------------------------
 autoUpdater.setFeedURL({
   provider: "github",
-  token: process.env.GH_TOKEN,
-  owner: "RetroPeak-Solutions",
-  repo: "rps-radio-dispatch",
+  ...(process.env.GH_TOKEN ? { token: process.env.GH_TOKEN } : {}),
+  owner: GITHUB_OWNER,
+  repo: GITHUB_REPO,
 });
 
 autoUpdater.autoDownload = false; // manual control
 autoUpdater.autoInstallOnAppQuit = true;
 autoUpdater.autoRunAppAfterInstall = true;
-autoUpdater.forceDevUpdateConfig = true;
+autoUpdater.forceDevUpdateConfig = !app.isPackaged;
 autoUpdater.allowPrerelease = false;
 autoUpdater.logger = console;
 
 // Forward download progress to renderer
 autoUpdater.on("download-progress", (progressObj) => {
-  if (win) {
-    win.webContents.send("update-status", {
-      status: "downloading",
-      ...progressObj,
-    });
-  }
+  emitUpdateStatus({
+    status: "downloading",
+    ...progressObj,
+  });
+});
+
+autoUpdater.on("update-available", (info) => {
+  lastUpdateInfo = info ?? null;
+  emitUpdateStatus({
+    status: "available",
+    version: stripVersionPrefix(info?.version),
+  });
+});
+
+autoUpdater.on("update-not-available", () => {
+  lastUpdateInfo = null;
+  emitUpdateStatus({
+    status: "not-available",
+  });
+});
+
+autoUpdater.on("update-downloaded", (info) => {
+  downloadInFlight = false;
+  lastUpdateInfo = info ?? lastUpdateInfo;
+  emitUpdateStatus({
+    status: "downloaded",
+    version: stripVersionPrefix(info?.version),
+  });
+});
+
+autoUpdater.on("error", (err) => {
+  downloadInFlight = false;
+  emitUpdateStatus({
+    status: "error",
+    error: err?.message || "Unknown updater error",
+  });
 });
 
 // -------------------------
@@ -418,11 +498,12 @@ ipcMain.handle("updates.getCurrentVersion", () => app.getVersion());
 
 ipcMain.handle("updates.getLatestVersion", async () => {
   try {
-    const res = await axios.get(
-      "https://api.github.com/repos/RetroPeak-Solutions/rps-radio-dispatch/releases/latest",
-      { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}` } }
-    );
-    return res?.data?.name || app.getVersion();
+    if (lastUpdateInfo?.version) {
+      return stripVersionPrefix(lastUpdateInfo.version);
+    }
+    const release = await fetchLatestGithubRelease();
+    const releaseVersion = stripVersionPrefix(release?.tag_name || release?.name);
+    return releaseVersion || app.getVersion();
   } catch (err) {
     console.error("[Updater] Failed to get latest version:", err);
     return app.getVersion();
@@ -431,11 +512,11 @@ ipcMain.handle("updates.getLatestVersion", async () => {
 
 ipcMain.handle("updates.getReleaseNotes", async () => {
   try {
-    const res = await axios.get(
-      "https://api.github.com/repos/RetroPeak-Solutions/rps-radio-dispatch/releases/latest",
-      { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}` } }
-    );
-    return res?.data?.body || "- No release notes available.";
+    const fromUpdater = releaseNotesToString(lastUpdateInfo?.releaseNotes);
+    if (fromUpdater) return fromUpdater;
+
+    const release = await fetchLatestGithubRelease();
+    return release?.body || "- No release notes available.";
   } catch (err) {
     console.error("[Updater] Failed to get release notes:", err);
     return "- Failed to load release notes. \n- Try Again Later";
@@ -444,93 +525,89 @@ ipcMain.handle("updates.getReleaseNotes", async () => {
 
 ipcMain.handle("updates.check", async () => {
   try {
-    const res = await axios.get(
-      "https://api.github.com/repos/RetroPeak-Solutions/rps-radio-dispatch/releases/latest",
-      { headers: { Authorization: `Bearer ${process.env.GH_TOKEN}` } }
-    );
-    const latestVersion = res?.data?.name;
-    const currentVersion = app.getVersion();
-    const available = !!latestVersion && latestVersion !== currentVersion;
-
-    if (win) {
-      win.webContents.send("update-status", {
-        status: available ? "available" : "not-available",
-        version: latestVersion,
-      });
+    const result = await autoUpdater.checkForUpdates();
+    const info = result?.updateInfo ?? null;
+    const latestVersion = stripVersionPrefix(info?.version);
+    const currentVersion = stripVersionPrefix(app.getVersion());
+    const available = Boolean(latestVersion && latestVersion !== currentVersion);
+    if (info) {
+      lastUpdateInfo = info;
     }
-
+    emitUpdateStatus({
+      status: available ? "available" : "not-available",
+      version: latestVersion || currentVersion,
+    });
     return available;
   } catch (err) {
-    console.error("[Updater] Error checking updates:", err);
-    return false;
+    console.error("[Updater] Error checking updates via autoUpdater:", err);
+    try {
+      const release = await fetchLatestGithubRelease();
+      const latestVersion = stripVersionPrefix(release?.tag_name || release?.name);
+      const currentVersion = stripVersionPrefix(app.getVersion());
+      const available = Boolean(latestVersion && latestVersion !== currentVersion);
+      emitUpdateStatus({
+        status: available ? "available" : "not-available",
+        version: latestVersion || currentVersion,
+      });
+      return available;
+    } catch (fallbackErr) {
+      console.error("[Updater] Fallback GitHub check failed:", fallbackErr);
+      emitUpdateStatus({
+        status: "error",
+        error: fallbackErr?.message || "Failed to check updates",
+      });
+      return false;
+    }
   }
 });
 
 ipcMain.handle("updates.download", async () => {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const result = await autoUpdater.checkForUpdates();
+  if (downloadInFlight) {
+    return { status: "downloading" };
+  }
 
-      if (!result || !result.updateInfo) {
-        console.log("[Updater] No update info returned");
-        resolve({ status: "no-update" });
-        return;
-      }
-
-      const { version } = result.updateInfo;
-
-      if (!version) {
-        console.log("[Updater] No update available");
-        resolve({ status: "no-update" });
-        return;
-      }
-
-      console.log("[Updater] Update found:", version);
-
-      // Notify renderer update exists
-      if (win) {
-        win.webContents.send("update-status", {
-          status: "available",
-          version,
-        });
-      }
-
-      autoUpdater.once("update-downloaded", () => {
-        console.log("[Updater] Update downloaded");
-
-        if (win) {
-          win.webContents.send("update-status", {
-            status: "downloaded",
-          });
-        }
-
-        resolve({ status: "downloaded" });
-      });
-
-      autoUpdater.once("error", (err) => {
-        console.error("[Updater] Download error:", err);
-
-        if (win) {
-          win.webContents.send("update-status", {
-            status: "error",
-            error: err.message,
-          });
-        }
-
-        reject(err);
-      });
-
-      // ✅ Only download if update exists
-      await autoUpdater.downloadUpdate();
-
-    } catch (err) {
-      console.error("[Updater] Check failed:", err);
-      reject(err);
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    const info = result?.updateInfo ?? null;
+    if (!info?.version) {
+      emitUpdateStatus({ status: "not-available" });
+      return { status: "no-update" };
     }
-  });
+
+    const latestVersion = stripVersionPrefix(info.version);
+    const currentVersion = stripVersionPrefix(app.getVersion());
+    if (latestVersion === currentVersion) {
+      emitUpdateStatus({ status: "not-available", version: latestVersion });
+      return { status: "no-update" };
+    }
+
+    lastUpdateInfo = info;
+    downloadInFlight = true;
+    emitUpdateStatus({ status: "available", version: latestVersion });
+    await autoUpdater.downloadUpdate();
+    return { status: "started" };
+  } catch (err) {
+    downloadInFlight = false;
+    console.error("[Updater] Download failed:", err);
+    emitUpdateStatus({
+      status: "error",
+      error: err?.message || "Failed to download update",
+    });
+    return { status: "error", error: err?.message || "Failed to download update" };
+  }
 });
 
 ipcMain.handle("updates.install", () => {
   console.log("[Updater] Installing update...");
-  autoUpdater.quitAndInstall(true, true);
+  try {
+    autoUpdater.quitAndInstall(true, true);
+    return { ok: true };
+  } catch (err) {
+    console.error("[Updater] Install failed:", err);
+    emitUpdateStatus({
+      status: "error",
+      error: err?.message || "Failed to install update",
+    });
+    return { ok: false, error: err?.message || "Failed to install update" };
+  }
 });

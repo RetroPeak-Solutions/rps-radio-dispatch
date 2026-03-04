@@ -2465,6 +2465,16 @@ export default function CommunityConsole() {
     }) => {
       if (!event?.code) return;
       if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
+      const activeChannels = [...activePttChannelsRef.current];
+      if (activeChannels.length > 0) {
+        void transmitPtt(false, activeChannels);
+      } else {
+        stopMicStream();
+      }
+      setLocalPttActive(false);
+      setActivePttIndicator(null);
+      setChannelTransmitting({});
+      setChannelToneTransmitting({});
       setBanState({
         code: event.code,
         message: "Access to this console is restricted.",
@@ -2487,6 +2497,16 @@ export default function CommunityConsole() {
         setBanState(null);
         return;
       }
+      const activeChannels = [...activePttChannelsRef.current];
+      if (activeChannels.length > 0) {
+        void transmitPtt(false, activeChannels);
+      } else {
+        stopMicStream();
+      }
+      setLocalPttActive(false);
+      setActivePttIndicator(null);
+      setChannelTransmitting({});
+      setChannelToneTransmitting({});
       setBanState({
         code: event.code,
         message: "Access to this console is restricted.",
