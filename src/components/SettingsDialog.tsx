@@ -39,6 +39,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     notifications: false,
     placements: { channels: [], tones: [], alerts: [] },
     keybinds: { ptt: { global: { key: [] }, communities: [] } },
+    txAudio: { playEnd: false , playStart: false }
   });
 
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({
@@ -51,6 +52,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const [recordingKeybind, setRecordingKeybind] = useState(false);
   const [pressedKeys, setPressedKeys] = useState<string[]>([]);
+  const [deviceInfo, setDeviceInfo] = useState<{ serialNumber: string | null, deviceId: string }>({ deviceId: "", serialNumber: "" });
 
   /* ================= LOAD SETTINGS ================= */
   useEffect(() => {
@@ -130,6 +132,17 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     });
   }
 
+  useEffect(() => {
+    if (deviceInfo.deviceId) return;
+    async function getDeviceSerial() {
+      const res = await window.api.device.getInfo();
+
+      setDeviceInfo(res);
+    }
+
+    getDeviceSerial();
+  }, []);
+
   /* ================= KEYBIND RECORDER ================= */
   useEffect(() => {
     if (!recordingKeybind) return;
@@ -177,9 +190,12 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   /* ================= UI ================= */
   return (
     <Dialog open={open} onClose={onClose} title="Settings" showClose closeOnEsc={!recordingKeybind} footer={
-      <div className="flex justify-end gap-3">
-        <button className="cursor-pointer px-4 py-2 rounded-xl bg-[#f63c3c1a] border border-[#f63c3c1a] text-[#f63c3c] font-medium" onClick={onClose}>Cancel</button>
-        <button className="cursor-pointer px-4 py-2 rounded-xl bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] font-medium" onClick={saveSettings}>Save</button>
+      <div className="flex flex-row justify-between select-none">
+        <small className="mt-2 text-gray-500">Console Serial: #{deviceInfo.serialNumber?.toUpperCase()}</small>
+        <div className="flex justify-end gap-3">
+          <button className="cursor-pointer px-4 py-2 rounded-xl bg-[#f63c3c1a] border border-[#f63c3c1a] text-[#f63c3c] font-medium" onClick={onClose}>Cancel</button>
+          <button className="cursor-pointer px-4 py-2 rounded-xl bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] font-medium" onClick={saveSettings}>Save</button>
+        </div>
       </div>
     }>
       <div className="flex flex-col gap-6">

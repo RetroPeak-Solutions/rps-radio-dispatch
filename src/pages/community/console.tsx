@@ -2460,9 +2460,11 @@ export default function CommunityConsole() {
 
     const onDispatchBan = (event: {
       code?: string;
+      userId?: string;
       ban?: { reason?: string | null; expiresAt?: string | null };
     }) => {
       if (!event?.code) return;
+      if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
       setBanState({
         code: event.code,
         message: "Access to this console is restricted.",
@@ -2470,6 +2472,35 @@ export default function CommunityConsole() {
         expiresAt: event?.ban?.expiresAt ?? null,
       });
       toast("Access denied for this community console.", { type: "error" });
+    };
+
+    const onDispatchBanState = (event: {
+      action?: "banned" | "unbanned";
+      code?: string;
+      userId?: string;
+      reason?: string | null;
+      expiresAt?: string | null;
+    }) => {
+      if (!event?.action || !event?.code) return;
+      if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
+      if (event.action === "unbanned") {
+        setBanState(null);
+        return;
+      }
+      setBanState({
+        code: event.code,
+        message: "Access to this console is restricted.",
+        reason: event.reason ?? null,
+        expiresAt: event.expiresAt ?? null,
+      });
+      toast("Access denied for this community console.", { type: "error" });
+    };
+
+    const onDispatchBanCleared = (event: {
+      userId?: string;
+    }) => {
+      if (event?.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
+      setBanState(null);
     };
 
     const onPeerId = (event: {
@@ -2720,6 +2751,8 @@ export default function CommunityConsole() {
     socket.on("dispatch:ptt", onPtt);
     socket.on("dispatch:user", onDispatchUser);
     socket.on("dispatch:ban", onDispatchBan);
+    socket.on("dispatch:ban-state", onDispatchBanState);
+    socket.on("dispatch:ban-cleared", onDispatchBanCleared);
     socket.on("dispatch:peer-id", onPeerId);
     socket.on("dispatch:tone", onTone);
     socket.on("dispatch:last-src", onLastSrc);
@@ -2738,6 +2771,8 @@ export default function CommunityConsole() {
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:user", onDispatchUser);
       socket.off("dispatch:ban", onDispatchBan);
+      socket.off("dispatch:ban-state", onDispatchBanState);
+      socket.off("dispatch:ban-cleared", onDispatchBanCleared);
       socket.off("dispatch:peer-id", onPeerId);
       socket.off("dispatch:tone", onTone);
       socket.off("dispatch:last-src", onLastSrc);

@@ -8,6 +8,7 @@ import {
 } from "react-router";
 import "@src/index.css";
 import React, {
+  useCallback,
   createContext,
   useContext,
   useEffect,
@@ -15,6 +16,7 @@ import React, {
 } from "react";
 import { ThemeProvider } from "flowbite-react";
 import { SocketProvider } from "./context/SocketProvider";
+import { useSocket } from "./context/SocketProvider";
 import { ToastProvider } from "./context/ToastProvider";
 import { useLoading } from "./context/Loading";
 import { SocketLink } from "@utils/link";
@@ -160,6 +162,19 @@ export default function Root(): JSX.Element {
     });
   };
 
+  const refreshBanState = useCallback(async () => {
+    try {
+      await axios.get(AuthUser(), { withCredentials: true });
+      setGlobalBan(null);
+    } catch (err: any) {
+      if (err?.response?.status === 403) {
+        applyBanPayload(err?.response?.data);
+      } else if (err?.response?.status === 401) {
+        setGlobalBan(null);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     const configureDispatchHeaders = async () => {
@@ -190,17 +205,7 @@ export default function Root(): JSX.Element {
       },
     );
 
-    void axios
-      .get(AuthUser(), { withCredentials: true })
-      .then(() => {
-        if (mounted) setGlobalBan(null);
-      })
-      .catch((err) => {
-        if (!mounted) return;
-        if (err?.response?.status === 403) {
-          applyBanPayload(err?.response?.data);
-        }
-      });
+    void refreshBanState();
 
     return () => {
       mounted = false;
@@ -214,6 +219,7 @@ export default function Root(): JSX.Element {
     <AppErrorBoundary>
       <ThemeProvider>
         <SocketProvider url={useSocketLink() ?? socketUrl}>
+          <RealtimeBanBridge onRefresh={refreshBanState} />
           <ToastProvider>
             <IncomingVoiceProvider>
               <DispatchAudioProvider>
@@ -266,6 +272,33 @@ export default function Root(): JSX.Element {
       </ThemeProvider>
     </AppErrorBoundary>
   );
+}
+
+function RealtimeBanBridge({ onRefresh }: { onRefresh: () => Promise<void> }) {
+  const { socket } = useSocket();
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const register = () => {
+      socket.emit("auth:register");
+    };
+    register();
+    socket.on("connect", register);
+
+    const onBanState = (event: { action?: "banned" | "unbanned"; code?: string }) => {
+      if (!event?.action || !event?.code) return;
+      void onRefresh();
+    };
+
+    socket.on("auth:ban-state", onBanState);
+    return () => {
+      socket.off("connect", register);
+      socket.off("auth:ban-state", onBanState);
+    };
+  }, [socket, onRefresh]);
+
+  return null;
 }
 
 /* ===========================

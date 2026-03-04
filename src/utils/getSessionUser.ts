@@ -7,15 +7,18 @@ export default async function getSessionUser({ onSuccess, onFailed }: { onSucces
             withCredentials: true,
         });
 
-        if (res.data.ok) return;
-        const data = await res.data;
-        if (!data.user) {
+        const data = res.data;
+        if (!data?.user) {
             onFailed({ message: "No Active User Session Found!"});
         } else {
             onSuccess(data.user);
         }
     } catch (err: any) {
+        const data = err?.response?.data;
+        if (data?.user) {
+            onSuccess(data.user);
+            return;
+        }
         onFailed(err);
-        // noop
     }
 }
