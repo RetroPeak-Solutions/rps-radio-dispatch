@@ -3,13 +3,14 @@
   "description": "A radio dispatch application for RetroRadio, built with Electron and React.",
   "author": {
     "email": "dgraves@retropeak.solutions",
-    "name": "Devin G (DeathSoulYT)",
+    "name": "Devin G. (DeathSoulYT)",
     "url": "https://retropeak.solutions"
   },
+  "copyright": "Copyright (c) 2026 RetroPeak Solutions, LLC. All rights reserved.",
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
@@ -69,7 +70,16 @@
       "perMachine": false,
       "allowElevation": false,
       "runAfterFinish": true,
-      "oneClick": false
+      "oneClick": false,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "RetroRadio - Dispatch",
+      "license": "LICENSE.md",
+      "allowToChangeInstallationDirectory": true
     }
   },
   "scripts": {

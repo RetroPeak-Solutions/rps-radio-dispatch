@@ -5,7 +5,15 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 import axios from "axios";
 
+/** @type {"production" | "development"} */
+let nodeEnv = 'production';
+
+// this works if npm run build, followed by npm run package-(any of the scripts),
+// and then open from executable file
+nodeEnv = !app.isPackaged ? 'development' : process.env.NODE_ENV || 'production';
+
 import pkg from "electron-updater";
+import { env } from "process";
 const { autoUpdater } = pkg;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,6 +22,8 @@ const __dirname = path.dirname(__filename);
 // Absolute path to preload
 const preloadPath = path.resolve(__dirname, "preload.js");
 console.log("[DEBUG] Preload absolute path:", preloadPath);
+
+
 
 let win = null;
 let pttCommunityContext = null;
@@ -63,15 +73,36 @@ const createWindow = () => {
   win = new BrowserWindow({
     width: 1200,
     height: 800,
+    allowRunningInsecureContent: true,
     // autoHideMenuBar: false,
     // titleBarStyle: "hidden",
     // ...(process.platform !== 'darwin' ? { titleBarOverlay: true } : { titleBarOverlay: true }),
     webPreferences: {
+      sandbox: false,
+      // sandbox: nodeEnv === "production", // sandbox only in production for security
+      webSecurity: nodeEnv === "production", // disable in development for easier testing
+      devTools: nodeEnv === "development",
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.resolve(__dirname, "preload.js"), // preload script
     },
+    icon: path.join(__dirname, "icons/app.ico"),
   });
+
+  // if (nodeEnv === "development") {
+  //   const { default: installExtension, REACT_DEVELOPER_TOOLS } = import("electron-devtools-installer");
+  //   installExtension(REACT_DEVELOPER_TOOLS)
+  //     .then((name) => console.log(`[DevTools] Added Extension:  ${name}`))
+  //     .catch((err) => console.error("[DevTools] An error occurred: ", err));
+
+  //   installExtension(REDUX_DEVTOOLS)
+  //     .then((name) => console.log(`[DevTools] Added Extension:  ${name}`))
+  //     .catch((err) => console.error("[DevTools] An error occurred: ", err));
+  // }
+
+    // prevent webpack-dev-server from setting new title
+  win.on("page-title-updated", (e) => e.preventDefault());
+
   console.log("[Main] Main window created");
   console.log("[Main] Loading content...");
   console.log("[Main] VITE_DEV_SERVER_URL:", process.env.VITE_DEV_SERVER_URL);
