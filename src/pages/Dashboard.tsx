@@ -115,14 +115,6 @@ export default function DashboardPage() {
                         />
                     </div>
                 </div>
-                {/* <div className="mt-4">
-                    <div className="flex flex-wrap gap-2">
-                        <Button className="cursor-pointer bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6]" onClick={() => setJoinDialogOpen(true)}>
-                            <Plus className="h-4 w-4" /> Find / Join Community
-                        </Button>
-                        <Button className="cursor-pointer bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6]" onClick={() => setCreateDialogOpen(true)}>Create Community</Button>
-                    </div>
-                </div> */}
             </ModernCard>
 
             {filteredMemberships.length === 0 ? (

@@ -3373,11 +3373,17 @@ export default function CommunityConsole() {
           }
         }
       `}</style>
-      <div className="min-h-screen bg-[#0B1220] text-white font-mono flex flex-col">
+      <div className="min-h-screen bg-[#0B1220] text-white font-mono flex flex-col select-none">
         <div className="flex flex-col w-full fixed z-10 min-h-fit">
           <div className="z-10 w-full flex flex-row justify-between p-2 bg-[#0C1524] border-b border-gray-700">
             <div id="title-bar" className="flex flex-row gap-1">
-              <h1>{community.name} | Dispatch Console</h1>
+              <img
+                src="/assets/imgs/retroradio-dispatch-logo.svg"
+                alt="RetroRadio Dispatch"
+                className="h-8 w-auto object-contain"
+                draggable={false}
+              />
+              <h1 className="mt-2">{community.name} | Dispatch Console</h1>
             </div>
             <div className="flex gap-2">
               <div
@@ -3711,7 +3717,7 @@ export default function CommunityConsole() {
                                 >
                                   State:{" "}
                                   {panicActive
-                                    ? "PANIC ACTIVE"
+                                    ? "ACTIVE PANIC"
                                     : tx
                                     ? "Transmitting"
                                     : toneTx
@@ -4112,7 +4118,6 @@ export default function CommunityConsole() {
       <audio ref={rxMonitorAudioRef} className="hidden" autoPlay />
       <audio ref={rxFrameAudioRef} className="hidden" autoPlay />
       <audio ref={rxProcessedAudioRef} className="hidden" autoPlay />
-      t
     </>
   );
 }
