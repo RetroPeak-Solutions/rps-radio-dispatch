@@ -442,6 +442,7 @@ export default function CommunityConsole() {
   const [toneQueue, setToneQueue] = useState<string[]>([]);
   const [canvasHeight, setCanvasHeight] = useState(MIN_CANVAS_HEIGHT);
   const [canvasWidth, setCanvasWidth] = useState(0);
+  const [viewportScale, setViewportScale] = useState(1);
   const [autoWrapLayout, setAutoWrapLayout] = useState<
     Record<string, { x: number; y: number }> | null
   >(null);
@@ -3283,6 +3284,21 @@ export default function CommunityConsole() {
     return () => observer.disconnect();
   }, [activeZoneIndex, community?.id]);
 
+  useEffect(() => {
+    const readScale = () => {
+      const vv = window.visualViewport;
+      const scale = vv?.scale ?? 1;
+      setViewportScale(Number.isFinite(scale) && scale > 0 ? scale : 1);
+    };
+    readScale();
+    window.addEventListener("resize", readScale);
+    window.visualViewport?.addEventListener("resize", readScale);
+    return () => {
+      window.removeEventListener("resize", readScale);
+      window.visualViewport?.removeEventListener("resize", readScale);
+    };
+  }, []);
+
   // ---------------- AUTO PLACEMENT ----------------
   useEffect(() => {
     if (!community || !canvasRef.current || !activeZone) return;
@@ -3367,7 +3383,9 @@ export default function CommunityConsole() {
     const savedLayoutMaxRight = Math.max(
       ...Object.values(zonePositions).map((p) => p.x + CARD_WIDTH),
     );
-    const shouldAutoWrap = !editMode && savedLayoutMaxRight > width - CARD_SPACING;
+    const zoomedIn = viewportScale > 1.02;
+    const shouldAutoWrap =
+      !editMode && zoomedIn && savedLayoutMaxRight > width - CARD_SPACING;
 
     if (shouldAutoWrap) {
       setAutoWrapLayout(fallbackByIndex);
@@ -3383,7 +3401,15 @@ export default function CommunityConsole() {
       Math.max(...Object.values(zonePositions).map((p) => p.y + CARD_HEIGHT)) +
       CARD_SPACING;
     setCanvasHeight(Math.max(lowest, MIN_CANVAS_HEIGHT));
-  }, [community, activeZone, activeZoneIndex, positions, canvasWidth, editMode]);
+  }, [
+    community,
+    activeZone,
+    activeZoneIndex,
+    positions,
+    canvasWidth,
+    editMode,
+    viewportScale,
+  ]);
 
   // ---------------- DRAG LOGIC ----------------
   const clampToCanvas = (x: number, y: number) => {

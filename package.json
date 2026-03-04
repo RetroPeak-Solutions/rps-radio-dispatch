@@ -16,6 +16,7 @@
   "homepage": "./dist",
   "license": "MIT",
   "build": {
+    "afterSign": "scripts/notarize.cjs",
     "publish": [
       {
         "provider": "github",
@@ -53,8 +54,8 @@
         "dmg",
         "zip"
       ],
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": true,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
       "icon": "electron/icons/app.icns"
