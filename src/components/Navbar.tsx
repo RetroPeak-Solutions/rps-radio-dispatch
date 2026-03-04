@@ -10,6 +10,7 @@ import { AuthUser, AuthLogout } from "@utils/link";
 import axios from "axios";
 import { useLoading } from "@context/Loading";
 import { SettingsDialog } from "@components/SettingsDialog";
+import Logo from "@assets/imgs/retroradio-dispatch-logo.svg";
 
 export default function Navbar() {
   const { setLoading } = useLoading();
@@ -69,7 +70,7 @@ export default function Navbar() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <NavLink to="/" className="flex items-center gap-2 text-white">
             <img
-              src="/assets/imgs/retroradio-dispatch-logo.svg"
+              src={Logo}
               alt="RetroRadio Dispatch"
               className="h-14 w-auto object-contain"
               draggable={false}

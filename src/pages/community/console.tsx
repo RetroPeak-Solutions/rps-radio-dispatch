@@ -35,6 +35,7 @@ import PageSelect from "@assets/imgs/pageselect.png";
 import ChannelMarker from "@assets/imgs/channelmarker.png";
 import Pager from "@assets/imgs/pager.png";
 import DualPager from "@assets/imgs/dualpage.png";
+import Logo from "@assets/imgs/retroradio-dispatch-logo.svg";
 
 type Position = { x: string; y: string };
 
@@ -3378,7 +3379,7 @@ export default function CommunityConsole() {
           <div className="z-10 w-full flex flex-row justify-between p-2 bg-[#0C1524] border-b border-gray-700">
             <div id="title-bar" className="flex flex-row gap-1">
               <img
-                src="/assets/imgs/retroradio-dispatch-logo.svg"
+                src={Logo}
                 alt="RetroRadio Dispatch"
                 className="h-8 w-auto object-contain"
                 draggable={false}
