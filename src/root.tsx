@@ -24,6 +24,8 @@ import { AppErrorBoundary } from "@wrappers/Error/AppErrorBoundary";
 import { IncomingVoiceProvider } from "@context/IncomingVoice";
 import { DispatchAudioProvider } from "@context/DispatchProvider";
 import axios from "axios";
+import { AuthUser } from "@utils/link";
+import AuthPageWrapper from "./Wrappers/Page/AuthPageWrapper";
 
 /* ===========================
    Fonts
@@ -138,6 +140,26 @@ export async function loader(): Promise<{ socketUrl: string | null }> {
 
 export default function Root(): JSX.Element {
   useDarkMode();
+  const [globalBan, setGlobalBan] = useState<{
+    code: string;
+    message: string;
+    reason?: string | null;
+    expiresAt?: string | null;
+    communityName?: string | null;
+  } | null>(null);
+
+  const applyBanPayload = (payload: any) => {
+    if (!payload?.code || !String(payload.code).includes("BANNED")) return;
+    const ban = payload?.ban ?? {};
+    setGlobalBan({
+      code: String(payload.code),
+      message: String(payload.message ?? "Access to this app is restricted."),
+      reason: ban?.reason ?? null,
+      expiresAt: ban?.expiresAt ?? null,
+      communityName: payload?.community?.name ?? null,
+    });
+  };
+
   useEffect(() => {
     let mounted = true;
     const configureDispatchHeaders = async () => {
@@ -155,8 +177,34 @@ export default function Root(): JSX.Element {
       }
     };
     void configureDispatchHeaders();
+
+    const interceptorId = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        const status = error?.response?.status;
+        const payload = error?.response?.data;
+        if (status === 403) {
+          applyBanPayload(payload);
+        }
+        return Promise.reject(error);
+      },
+    );
+
+    void axios
+      .get(AuthUser(), { withCredentials: true })
+      .then(() => {
+        if (mounted) setGlobalBan(null);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        if (err?.response?.status === 403) {
+          applyBanPayload(err?.response?.data);
+        }
+      });
+
     return () => {
       mounted = false;
+      axios.interceptors.response.eject(interceptorId);
     };
   }, []);
 
@@ -169,7 +217,48 @@ export default function Root(): JSX.Element {
           <ToastProvider>
             <IncomingVoiceProvider>
               <DispatchAudioProvider>
-                <AppRoutes />
+                {globalBan ? (
+                  <AuthPageWrapper>
+                    <div className="min-h-screen bg-[#0B1220] text-white font-mono flex items-center justify-center p-6">
+                      <div className="w-full max-w-xl rounded-2xl border border-red-500/40 bg-[#1A0F14] p-6 space-y-4">
+                        <h1 className="text-2xl uppercase tracking-wide text-red-300/80">
+                          Access Restricted
+                        </h1>
+                        <h2 className="text-xl font-bold text-red-200">
+                          {globalBan.communityName
+                            ? `${globalBan.communityName} Access Banned`
+                            : globalBan.code === "SYSTEM_BANNED"
+                              ? "System Account Banned"
+                              : globalBan.code === "DEVICE_BANNED"
+                                ? "Dispatch Device Banned"
+                                : "Access Banned"}
+                        </h2>
+                        <p className="text-sm text-red-100/90">
+                          {globalBan.message}
+                        </p>
+                        {globalBan.reason ? (
+                          <p className="text-sm text-red-100/90">
+                            <span className="text-red-300">Reason:</span>{" "}
+                            {globalBan.reason}
+                          </p>
+                        ) : null}
+                        {globalBan.expiresAt ? (
+                          <p className="text-sm text-red-100/90">
+                            <span className="text-red-300">Expires:</span>{" "}
+                            {new Date(globalBan.expiresAt).toLocaleString()}
+                          </p>
+                        ) : (
+                          <p className="text-sm text-red-100/90">
+                            <span className="text-red-300">Duration:</span>{" "}
+                            Permanent
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </AuthPageWrapper>
+                ) : (
+                  <AppRoutes />
+                )}
               </DispatchAudioProvider>
             </IncomingVoiceProvider>
           </ToastProvider>

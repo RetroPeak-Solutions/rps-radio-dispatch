@@ -534,11 +534,6 @@ export default function CommunityConsole() {
     channelPanicActiveRef.current = channelPanicActive;
   }, [channelPanicActive]);
 
-  useEffect(() => {
-    if (!banState) return;
-    navigate("/");
-  }, [banState, navigate]);
-
   const filteredCallHistoryItems = useMemo(
     () =>
       callHistoryItems.filter((item) => item.eventType === callHistoryTypeFilter),
@@ -2283,8 +2278,8 @@ export default function CommunityConsole() {
         setSessionUserId(res.data?.user?.id ?? "");
 
         const loaded = normalizeSettings(
-          (await window.api.settings.get()) ?? null,
-        );
+          (await window.api?.settings?.get?.()) ?? null,
+        )
         setSettings(loaded);
         setConsoleSettings(getCommunityConsoleSettings(loaded, communityId));
         setCommunityPttBindings(getCommunityPttBindings(loaded, communityId));
@@ -2301,6 +2296,12 @@ export default function CommunityConsole() {
         if (err?.response?.status === 403) {
           const payload = err?.response?.data ?? {};
           const ban = payload?.ban ?? null;
+          if (payload?.community) {
+            setCommunity(payload.community);
+          }
+          if (payload?.user?.id) {
+            setSessionUserId(String(payload.user.id));
+          }
           setBanState({
             code: String(payload?.code ?? "FORBIDDEN"),
             message: String(
@@ -2310,7 +2311,6 @@ export default function CommunityConsole() {
             expiresAt: ban?.expiresAt ?? null,
           });
           toast("Access denied for this community console.", { type: "error" });
-          navigate("/");
           return;
         }
         console.error(err);
@@ -2470,7 +2470,6 @@ export default function CommunityConsole() {
         expiresAt: event?.ban?.expiresAt ?? null,
       });
       toast("Access denied for this community console.", { type: "error" });
-      navigate("/");
     };
 
     const onPeerId = (event: {
@@ -3506,7 +3505,44 @@ export default function CommunityConsole() {
     };
   }, []);
 
-  if (banState) return null;
+  if (banState) {
+    return (
+      <div className="min-h-screen bg-[#0B1220] text-white font-mono flex items-center justify-center p-6">
+        <div className="w-full max-w-xl rounded-2xl border border-red-500/40 bg-[#1A0F14] p-6 space-y-4">
+          <div className="text-sm uppercase tracking-wide text-red-300/80">{community?.name ? community.name : "System"} Access Restricted</div>
+          <h1 className="text-2xl font-bold text-red-200">
+            {community?.name ? `${community.name} Console` : banState.code === "SYSTEM_BANNED" ? "System Account" : "Dispatch Console" } Banned
+          </h1>
+          <p className="text-sm text-red-100/90">
+            {banState.message || "You are banned from this community console."}
+          </p>
+          {banState.reason ? (
+            <p className="text-sm text-red-100/90">
+              <span className="text-red-300">Reason:</span> {banState.reason}
+            </p>
+          ) : null}
+          {banState.expiresAt ? (
+            <p className="text-sm text-red-100/90">
+              <span className="text-red-300">Expires:</span>{" "}
+              {new Date(banState.expiresAt).toLocaleString()}
+            </p>
+          ) : (
+            <p className="text-sm text-red-100/90">
+              <span className="text-red-300">Duration:</span> Permanent
+            </p>
+          )}
+          <div className="pt-2">
+            <button
+              className="px-4 py-2 rounded bg-[#8080801A] border border-[#8080801A] text-[#BFBFBF]"
+              onClick={() => navigate("/")}
+            >
+              Back To Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!community) return null;
 
