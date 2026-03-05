@@ -93,7 +93,6 @@ const CARD_HEIGHT = 150;
 const CARD_SPACING = 16;
 const SNAP_DISTANCE = 28;
 const HOLD_TONE_INTERVAL_SECONDS = 30;
-const PANIC_EMERGENCY_INTERVAL_SECONDS = HOLD_TONE_INTERVAL_SECONDS;
 const CALL_HISTORY_PAGE_SIZE = 12;
 
 const MIN_CANVAS_HEIGHT = 600;
@@ -463,10 +462,6 @@ export default function CommunityConsole() {
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const holdToneIntervalsRef = useRef<Record<string, number>>({});
   const holdToneSendingRef = useRef<Record<string, boolean>>({});
-  const panicEmergencyIntervalRef = useRef<number | null>(null);
-  const panicEmergencySendingRef = useRef(false);
-  const panicEmergencyStartTimeoutRef = useRef<number | null>(null);
-  const channelPanicActiveRef = useRef<Record<string, boolean>>({});
   const micStreamRef = useRef<MediaStream | null>(null);
   const micInputDeviceIdRef = useRef<string>("");
   const rxMonitorAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -526,10 +521,6 @@ export default function CommunityConsole() {
       mounted = false;
     };
   }, []);
-
-  useEffect(() => {
-    channelPanicActiveRef.current = channelPanicActive;
-  }, [channelPanicActive]);
 
   const filteredCallHistoryItems = useMemo(
     () =>
@@ -1800,104 +1791,20 @@ export default function CommunityConsole() {
       });
       return;
     }
-    const newlyActivatedChannels = channels.filter(
-      (id) => !channelPanicActive[id],
-    );
-    setChannelPanicActive((prev) => {
-      const next = { ...prev };
-      channels.forEach((id) => {
-        next[id] = true;
-      });
-      return next;
-    });
-    if (newlyActivatedChannels.length === 0) return;
-
-    const initialTone: TonePacket = {
-      id: `panic-initial-${Date.now()}`,
-      name: "alert2",
-      toneAHz: 0,
-      toneBHz: 0,
-      durationA: 0.3,
-      durationB: 0.3,
-    };
-
-    setToneChannelsState(newlyActivatedChannels, "tx", true);
-    setChannelLastSrc((prev) => {
-      const next = { ...prev };
-      newlyActivatedChannels.forEach((id) => {
-        next[id] = dispatchSource;
-      });
-      return next;
-    });
-    socket?.emit("dispatch:tone", {
+    socket?.emit("dispatch:panic", {
       communityId,
-      channelIds: newlyActivatedChannels,
+      channelIds: channels,
+      active: true,
       source: dispatchSource,
-      tones: [initialTone],
       timestamp: Date.now(),
     });
-    const localVolume = (volumes[newlyActivatedChannels[0]] ?? 50) / 100;
-    void playSfx(AUDIO_SFX.alert2, localVolume, consoleSettings.outputDeviceId)
-      .finally(() => {
-        setToneChannelsState(newlyActivatedChannels, "tx", false);
-        setChannelPageState((prev) => {
-          const next = { ...prev };
-          newlyActivatedChannels.forEach((id) => {
-            next[id] = false;
-          });
-          return next;
-        });
+    setChannelPageState((prev) => {
+      const next = { ...prev };
+      channels.forEach((id) => {
+        next[id] = false;
       });
-
-    if (!panicEmergencyIntervalRef.current && !panicEmergencyStartTimeoutRef.current) {
-      panicEmergencyStartTimeoutRef.current = window.setTimeout(() => {
-        panicEmergencyStartTimeoutRef.current = null;
-        panicEmergencyIntervalRef.current = window.setInterval(() => {
-          if (!communityId || panicEmergencySendingRef.current) return;
-
-          const activePanicChannels = Object.entries(channelPanicActiveRef.current)
-            .filter(([, active]) => active)
-            .map(([id]) => id);
-          if (activePanicChannels.length === 0) return;
-
-          panicEmergencySendingRef.current = true;
-          const emergencyTone: TonePacket = {
-            id: `panic-emergency-${Date.now()}`,
-            name: "emergency",
-            toneAHz: 0,
-            toneBHz: 0,
-            durationA: 0.3,
-            durationB: 0.3,
-          };
-
-          setToneChannelsState(activePanicChannels, "tx", true);
-          setChannelLastSrc((prev) => {
-            const next = { ...prev };
-            activePanicChannels.forEach((id) => {
-              next[id] = dispatchSource;
-            });
-            return next;
-          });
-          socket?.emit("dispatch:tone", {
-            communityId,
-            channelIds: activePanicChannels,
-            source: dispatchSource,
-            tones: [emergencyTone],
-            timestamp: Date.now(),
-          });
-
-          const emergencyVolume = (volumes[activePanicChannels[0]] ?? 50) / 100;
-          void playSfx(
-            AUDIO_SFX.emergency,
-            emergencyVolume,
-            consoleSettings.outputDeviceId,
-          ).finally(() => {
-            setToneChannelsState(activePanicChannels, "tx", false);
-            panicEmergencySendingRef.current = false;
-          });
-        }, PANIC_EMERGENCY_INTERVAL_SECONDS * 1000);
-      }, PANIC_EMERGENCY_INTERVAL_SECONDS * 1000);
-    }
+      return next;
+    });
   };
 
   const toggleListening = (channelId: string) => {
@@ -2617,6 +2524,53 @@ export default function CommunityConsole() {
       }
     };
 
+    const onPanic = (event: {
+      channelIds?: string[];
+      active?: boolean;
+      source?: string;
+      socketId?: string;
+    }) => {
+      const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
+      if (ids.length === 0) return;
+      const normalizedIds = Array.from(
+        new Set(ids.map((id) => normalizeToZoneChannelId(id))),
+      );
+      setChannelPanicActive((prev) => {
+        const next = { ...prev };
+        normalizedIds.forEach((id) => {
+          next[id] = event.active !== false;
+        });
+        return next;
+      });
+      setChannelLastSrc((prev) => {
+        const next = { ...prev };
+        normalizedIds.forEach((id) => {
+          next[id] = event.source || "Unknown";
+        });
+        return next;
+      });
+    };
+
+    const onPanicCleared = (event: {
+      channelIds?: string[];
+    }) => {
+      const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
+      if (ids.length === 0) {
+        setChannelPanicActive({});
+        return;
+      }
+      const normalizedIds = Array.from(
+        new Set(ids.map((id) => normalizeToZoneChannelId(id))),
+      );
+      setChannelPanicActive((prev) => {
+        const next = { ...prev };
+        normalizedIds.forEach((id) => {
+          next[id] = false;
+        });
+        return next;
+      });
+    };
+
     const onLastSrc = (event: { channelId?: string; source?: string }) => {
       debugLog("socket:onLastSrc", event);
       if (!event?.channelId) return;
@@ -2776,6 +2730,8 @@ export default function CommunityConsole() {
     socket.on("dispatch:ban-cleared", onDispatchBanCleared);
     socket.on("dispatch:peer-id", onPeerId);
     socket.on("dispatch:tone", onTone);
+    socket.on("dispatch:panic", onPanic);
+    socket.on("dispatch:panic-cleared", onPanicCleared);
     socket.on("dispatch:last-src", onLastSrc);
     socket.on("dispatch:ptt-status", onPttStatus);
     socket.on("dispatch:voice", onVoice);
@@ -2796,6 +2752,8 @@ export default function CommunityConsole() {
       socket.off("dispatch:ban-cleared", onDispatchBanCleared);
       socket.off("dispatch:peer-id", onPeerId);
       socket.off("dispatch:tone", onTone);
+      socket.off("dispatch:panic", onPanic);
+      socket.off("dispatch:panic-cleared", onPanicCleared);
       socket.off("dispatch:last-src", onLastSrc);
       socket.off("dispatch:ptt-status", onPttStatus);
       socket.off("dispatch:voice", onVoice);
@@ -3573,15 +3531,6 @@ export default function CommunityConsole() {
       });
       holdToneIntervalsRef.current = {};
       holdToneSendingRef.current = {};
-      if (panicEmergencyIntervalRef.current) {
-        window.clearInterval(panicEmergencyIntervalRef.current);
-        panicEmergencyIntervalRef.current = null;
-      }
-      if (panicEmergencyStartTimeoutRef.current) {
-        window.clearTimeout(panicEmergencyStartTimeoutRef.current);
-        panicEmergencyStartTimeoutRef.current = null;
-      }
-      panicEmergencySendingRef.current = false;
       destroyMicStream();
       stopVoiceFrameCapture();
       Object.keys(remoteAudioPipelinesRef.current).forEach((socketId) => {
@@ -3799,16 +3748,15 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                setChannelPanicActive({});
-                if (panicEmergencyIntervalRef.current) {
-                  window.clearInterval(panicEmergencyIntervalRef.current);
-                  panicEmergencyIntervalRef.current = null;
-                }
-                if (panicEmergencyStartTimeoutRef.current) {
-                  window.clearTimeout(panicEmergencyStartTimeoutRef.current);
-                  panicEmergencyStartTimeoutRef.current = null;
-                }
-                panicEmergencySendingRef.current = false;
+                const activePanicChannels = Object.entries(channelPanicActive)
+                  .filter(([, active]) => active)
+                  .map(([id]) => id);
+                socket?.emit("dispatch:panic-cleared", {
+                  communityId,
+                  channelIds: activePanicChannels,
+                  source: dispatchSource,
+                  timestamp: Date.now(),
+                });
               }}
             >
               <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
