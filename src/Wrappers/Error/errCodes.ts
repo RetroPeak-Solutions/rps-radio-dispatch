@@ -453,3 +453,5 @@ export const ERROR_CODES: Record<string, ErrorCodeInfo> = {
     description: "A configuration value is invalid.",
   },
 };
+
+export type ErrorCode = keyof typeof ERROR_CODES;

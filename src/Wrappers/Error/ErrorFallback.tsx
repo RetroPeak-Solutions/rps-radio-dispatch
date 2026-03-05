@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router";
 import { useState, useEffect } from "react";
 import { Copy } from "lucide-react";
-import { ERROR_CODES } from "@wrappers/Error/errCodes";
+import { ERROR_CODES, type ErrorCode } from "@wrappers/Error/errCodes";
 import "@wrappers/Error/scrollbar.css"
 
 interface ErrorFallbackProps {
@@ -21,18 +21,19 @@ export default function ErrorFallback({ error }: ErrorFallbackProps) {
   const err = error as Error & { code?: string };
   const errorMessage = err instanceof Error ? err.message : String(error);
   const codeFromError = err.code;
+  const isErrorCode = (code: unknown): code is ErrorCode =>
+    typeof code === "string" && code in ERROR_CODES;
 
   const isAppError =
-    (typeof codeFromError === "string" &&
-      ERROR_CODES[codeFromError] !== undefined) ||
+    (isErrorCode(codeFromError) && ERROR_CODES[codeFromError] !== undefined) ||
     Object.values(ERROR_CODES).some((ec) => ec.description === errorMessage);
 
   const title = isAppError
-    ? (codeFromError && ERROR_CODES[codeFromError]?.title) || "App Error"
+    ? (isErrorCode(codeFromError) && ERROR_CODES[codeFromError]?.title) || "App Error"
     : "Something went wrong";
 
   const description = isAppError
-    ? (codeFromError && ERROR_CODES[codeFromError]?.description) || errorMessage
+    ? (isErrorCode(codeFromError) && ERROR_CODES[codeFromError]?.description) || errorMessage
     : errorMessage;
 
   const stack =
