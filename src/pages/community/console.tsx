@@ -318,9 +318,6 @@ const playSfx = async (
 function resolveToneSfx(tone?: Partial<TonePacket>) {
   const raw = `${tone?.id ?? ""} ${tone?.name ?? ""}`.toLowerCase();
   if (!raw) return null;
-  if (raw.includes("emergency") || raw.includes("panic"))
-    return AUDIO_SFX.emergency;
-  if (raw.includes("hold")) return AUDIO_SFX.hold;
   if (
     raw.includes("alert1") ||
     raw.includes("alert 1") ||
@@ -339,6 +336,9 @@ function resolveToneSfx(tone?: Partial<TonePacket>) {
     raw.includes("alert_3")
   )
     return AUDIO_SFX.alert3;
+  if (raw.includes("hold")) return AUDIO_SFX.hold;
+  if (raw.includes("emergency") || raw.includes("panic"))
+    return AUDIO_SFX.emergency;
   return null;
 }
 
@@ -1791,16 +1791,23 @@ export default function CommunityConsole() {
       });
       return;
     }
+    const newlyActivatedChannels = channels.filter((id) => !channelPanicActive[id]);
+    if (newlyActivatedChannels.length === 0) {
+      toast("Selected channels are already in panic state.", {
+        type: "info",
+      });
+      return;
+    }
     socket?.emit("dispatch:panic", {
       communityId,
-      channelIds: channels,
+      channelIds: newlyActivatedChannels,
       active: true,
       source: dispatchSource,
       timestamp: Date.now(),
     });
     setChannelPageState((prev) => {
       const next = { ...prev };
-      channels.forEach((id) => {
+      newlyActivatedChannels.forEach((id) => {
         next[id] = false;
       });
       return next;
@@ -3748,12 +3755,8 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                const activePanicChannels = Object.entries(channelPanicActive)
-                  .filter(([, active]) => active)
-                  .map(([id]) => id);
                 socket?.emit("dispatch:panic-cleared", {
                   communityId,
-                  channelIds: activePanicChannels,
                   source: dispatchSource,
                   timestamp: Date.now(),
                 });
