@@ -1831,6 +1831,14 @@ export default function CommunityConsole() {
         channelId,
         listening: next,
       });
+      const radioChannelId = radioChannelIdByZoneChannelId[channelId];
+      if (radioChannelId) {
+        socket?.emit("dispatch:listen", {
+          communityId,
+          channelId: radioChannelId,
+          listening: next,
+        });
+      }
       return { ...prev, [channelId]: next };
     });
   };
@@ -1846,6 +1854,13 @@ export default function CommunityConsole() {
           channelId: ch.id,
           listening: nextListening,
         });
+        if (ch.channelId) {
+          socket?.emit("dispatch:listen", {
+            communityId,
+            channelId: ch.channelId,
+            listening: nextListening,
+          });
+        }
       });
       return next;
     });
