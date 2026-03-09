@@ -1652,6 +1652,18 @@ export default function CommunityConsole() {
     );
   };
 
+  const expandToneBridgeChannelIds = (channelIds: string[]) =>
+    Array.from(
+      new Set(
+        channelIds
+          .map((id) => normalizeToZoneChannelId(id))
+          .flatMap((id) => {
+            const radioId = radioChannelIdByZoneChannelId[id];
+            return radioId ? [id, radioId] : [id];
+          }),
+      ),
+    );
+
   const isListeningChannelId = (channelId: string) => {
     const zoneId = normalizeToZoneChannelId(channelId);
     if (channelListening[zoneId]) return true;
@@ -1689,9 +1701,15 @@ export default function CommunityConsole() {
       [normalizedId]: dispatchSource,
     }));
 
+    const bridgeChannelIds = expandToneBridgeChannelIds([normalizedId]);
+    debugLog("dispatch:tone:emit:hold", {
+      normalizedId,
+      bridgeChannelIds,
+      toneId: holdTone.id,
+    });
     socket?.emit("dispatch:tone", {
       communityId,
-      channelIds: [normalizedId],
+      channelIds: bridgeChannelIds,
       source: dispatchSource,
       tones: [holdTone],
       timestamp: Date.now(),
@@ -1751,9 +1769,15 @@ export default function CommunityConsole() {
       return next;
     });
 
+    const bridgeChannelIds = expandToneBridgeChannelIds(channels);
+    debugLog("dispatch:tone:emit:alert", {
+      alertNumber,
+      channels,
+      bridgeChannelIds,
+    });
     socket?.emit("dispatch:tone", {
       communityId,
-      channelIds: channels,
+      channelIds: bridgeChannelIds,
       source: dispatchSource,
       tones: [tone],
       timestamp: Date.now(),
@@ -2155,9 +2179,15 @@ export default function CommunityConsole() {
       return next;
     });
 
+    const bridgeChannelIds = expandToneBridgeChannelIds(channels);
+    debugLog("dispatch:tone:emit:quickcall", {
+      channels,
+      bridgeChannelIds,
+      toneCount: tones.length,
+    });
     socket?.emit("dispatch:tone", {
       communityId,
-      channelIds: channels,
+      channelIds: bridgeChannelIds,
       source: dispatchSource,
       tones,
       timestamp: Date.now(),
