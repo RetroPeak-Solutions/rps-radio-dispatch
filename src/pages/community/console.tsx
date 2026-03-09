@@ -2030,8 +2030,17 @@ export default function CommunityConsole() {
       const normalizedChannelIds = Array.from(
         new Set(channelIds.map((id) => normalizeToZoneChannelId(id))),
       );
+      const bridgeChannelIds = Array.from(
+        new Set(
+          normalizedChannelIds.flatMap((id) => {
+            const radioId = radioChannelIdByZoneChannelId[id];
+            return radioId ? [id, radioId] : [id];
+          }),
+        ),
+      );
       debugLog("transmitPtt:normalized-channel-ids", {
         normalizedChannelIds,
+        bridgeChannelIds,
       });
       if (active) {
         await ensureMicStream();
@@ -2045,7 +2054,7 @@ export default function CommunityConsole() {
       }
 
       setLocalPttActive(active);
-      activePttChannelsRef.current = active ? normalizedChannelIds : [];
+      activePttChannelsRef.current = active ? bridgeChannelIds : [];
       if (!active) {
         setActivePttIndicator(null);
       } else {
@@ -2067,7 +2076,7 @@ export default function CommunityConsole() {
 
       socket?.emit("dispatch:ptt", {
         communityId,
-        channelIds: normalizedChannelIds,
+        channelIds: bridgeChannelIds,
         active,
         source: dispatchSource,
         timestamp: Date.now(),
@@ -2075,10 +2084,18 @@ export default function CommunityConsole() {
       debugLog("transmitPtt:emit-dispatch-ptt", {
         communityId,
         normalizedChannelIds,
+        bridgeChannelIds,
         active,
       });
     },
-    [communityId, listenedChannelIds, normalizeToZoneChannelId, socket, dispatchSource],
+    [
+      communityId,
+      listenedChannelIds,
+      normalizeToZoneChannelId,
+      radioChannelIdByZoneChannelId,
+      socket,
+      dispatchSource,
+    ],
   );
 
   const playTones = async (
