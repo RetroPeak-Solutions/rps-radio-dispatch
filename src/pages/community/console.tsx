@@ -2068,6 +2068,9 @@ export default function CommunityConsole() {
       });
       if (active) {
         await ensureMicStream();
+        // Prime capture immediately on local PTT press so audio frames are ready
+        // even if ptt-status:granted is delayed/missed.
+        void startVoiceCapture(bridgeChannelIds);
         if (playHotCue) {
           playPttIndicatorTone("start");
           hotCuePendingRef.current = true;
