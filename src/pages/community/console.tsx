@@ -743,7 +743,12 @@ export default function CommunityConsole() {
     const AudioCtx =
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return null;
-    const ctx: AudioContext = new AudioCtx();
+    let ctx: AudioContext;
+    try {
+      ctx = new AudioCtx({ latencyHint: "interactive", sampleRate: 16000 } as AudioContextOptions);
+    } catch {
+      ctx = new AudioCtx({ latencyHint: "interactive" } as AudioContextOptions);
+    }
     const destination = ctx!.createMediaStreamDestination();
 
     const sourceResult = createRemoteInputSource(ctx, stream);
@@ -894,7 +899,8 @@ export default function CommunityConsole() {
     sourceRate: number,
   ): Int16Array => {
     const targetRate = 16000;
-    if (sourceRate <= targetRate) {
+    if (!input || input.length === 0) return new Int16Array(0);
+    if (sourceRate === targetRate) {
       const out = new Int16Array(input.length);
       for (let i = 0; i < input.length; i += 1) {
         const s = Math.max(-1, Math.min(1, input[i]));
@@ -903,27 +909,58 @@ export default function CommunityConsole() {
       return out;
     }
     const ratio = sourceRate / targetRate;
-    const length = Math.max(1, Math.floor(input.length / ratio));
+    const length = Math.max(1, Math.floor((input.length - 1) / ratio) + 1);
     const out = new Int16Array(length);
-    let outIdx = 0;
-    let pos = 0;
-    while (outIdx < length) {
-      const nextPos = pos + ratio;
-      const start = Math.floor(pos);
-      const end = Math.min(input.length, Math.floor(nextPos));
-      let sum = 0;
-      let count = 0;
-      for (let i = start; i < end; i += 1) {
-        sum += input[i];
-        count += 1;
-      }
-      const v = count > 0 ? sum / count : input[Math.min(start, input.length - 1)] || 0;
+    for (let i = 0; i < length; i += 1) {
+      const pos = i * ratio;
+      const idx = Math.floor(pos);
+      const frac = pos - idx;
+      const s1 = input[idx] ?? 0;
+      const s2 = input[Math.min(idx + 1, input.length - 1)] ?? s1;
+      const v = s1 + (s2 - s1) * frac;
       const clamped = Math.max(-1, Math.min(1, v));
-      out[outIdx] = (clamped * 32767) | 0;
-      outIdx += 1;
-      pos = nextPos;
+      out[i] = (clamped * 32767) | 0;
     }
     return out;
+  };
+
+  const txFrameQueueRef = useRef<Int16Array | null>(null);
+  const txFrameOffsetRef = useRef(0);
+
+  const enqueueTxFrames = (
+    frame: Int16Array,
+    emit: (chunk: Int16Array) => void,
+  ) => {
+    const targetSize = 320; // 20ms @ 16k
+    if (!frame || frame.length === 0) return;
+    if (!txFrameQueueRef.current || txFrameQueueRef.current.length < targetSize * 4) {
+      txFrameQueueRef.current = new Int16Array(targetSize * 4);
+      txFrameOffsetRef.current = 0;
+    }
+    let offset = txFrameOffsetRef.current;
+    let idx = 0;
+    while (idx < frame.length) {
+      const space = txFrameQueueRef.current.length - offset;
+      const toCopy = Math.min(space, frame.length - idx);
+      txFrameQueueRef.current.set(frame.subarray(idx, idx + toCopy), offset);
+      offset += toCopy;
+      idx += toCopy;
+      while (offset >= targetSize) {
+        const chunk = txFrameQueueRef.current.subarray(0, targetSize);
+        emit(new Int16Array(chunk));
+        const remaining = offset - targetSize;
+        if (remaining > 0) {
+          txFrameQueueRef.current.copyWithin(0, targetSize, offset);
+        }
+        offset = remaining;
+      }
+      if (offset >= txFrameQueueRef.current.length - targetSize) {
+        const next = new Int16Array(txFrameQueueRef.current.length * 2);
+        next.set(txFrameQueueRef.current.subarray(0, offset), 0);
+        txFrameQueueRef.current = next;
+      }
+    }
+    txFrameOffsetRef.current = offset;
   };
 
   const stopVoiceFrameCapture = () => {
@@ -949,11 +986,15 @@ export default function CommunityConsole() {
     txFrameSourceRef.current = null;
     txFrameSilentGainRef.current = null;
     txFrameCtxRef.current = null;
+    txFrameQueueRef.current = null;
+    txFrameOffsetRef.current = 0;
   };
 
   const startVoiceFrameCapture = async (stream: MediaStream) => {
     if (!USE_SERVER_VOICE_FRAMES || !socket || !communityId) return;
     stopVoiceFrameCapture();
+    txFrameQueueRef.current = null;
+    txFrameOffsetRef.current = 0;
     const AudioCtx =
       (window as any).AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return;
@@ -986,13 +1027,15 @@ export default function CommunityConsole() {
             payload?.sampleRate || ctx.sampleRate,
           );
           if (!frame || frame.length === 0) return;
-          socket.emit("dispatch:voice-frame", {
-            communityId,
-            channelIds: activeChannels,
-            source: dispatchSource,
-            sampleRate: 16000,
-            frameBase64: encodeInt16ToBase64(frame),
-            timestamp: Date.now(),
+          enqueueTxFrames(frame, (chunk) => {
+            socket.emit("dispatch:voice-frame", {
+              communityId,
+              channelIds: activeChannels,
+              source: dispatchSource,
+              sampleRate: 16000,
+              frameBase64: encodeInt16ToBase64(chunk),
+              timestamp: Date.now(),
+            });
           });
         };
         processorNode = worklet;
@@ -1002,7 +1045,7 @@ export default function CommunityConsole() {
     }
 
     if (!processorNode) {
-      const processor = ctx!.createScriptProcessor(2048, 1, 1);
+      const processor = ctx!.createScriptProcessor(1024, 1, 1);
       processor.onaudioprocess = (event) => {
         const activeChannels = activeVoiceChannelsRef.current;
         if (!socket || !communityId || activeChannels.length === 0) return;
@@ -1010,13 +1053,15 @@ export default function CommunityConsole() {
         if (!input || input.length === 0) return;
         const frame = downsampleTo16kMono(input, event.inputBuffer.sampleRate);
         if (!frame || frame.length === 0) return;
-        socket.emit("dispatch:voice-frame", {
-          communityId,
-          channelIds: activeChannels,
-          source: dispatchSource,
-          sampleRate: 16000,
-          frameBase64: encodeInt16ToBase64(frame),
-          timestamp: Date.now(),
+        enqueueTxFrames(frame, (chunk) => {
+          socket.emit("dispatch:voice-frame", {
+            communityId,
+            channelIds: activeChannels,
+            source: dispatchSource,
+            sampleRate: 16000,
+            frameBase64: encodeInt16ToBase64(chunk),
+            timestamp: Date.now(),
+          });
         });
       };
       processorNode = processor;
@@ -4345,9 +4390,11 @@ export default function CommunityConsole() {
                           <p className="mt-1 text-xs text-[#C7D2FE]">
                             Channels:{" "}
                             {item.channelIds.length > 0
-                              ? item.channelIds
-                                .map((id) => channelNameById[id] ?? id)
-                                .join(", ")
+                              ? Array.from(
+                                new Set(
+                                  item.channelIds.map((id) => channelNameById[id] ?? id),
+                                ),
+                              ).join(", ")
                               : "None"}
                           </p>
                           {item.eventType === "TONE" &&
