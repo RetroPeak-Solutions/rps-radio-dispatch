@@ -933,31 +933,31 @@ export default function CommunityConsole() {
   ) => {
     const targetSize = 320; // 20ms @ 16k
     if (!frame || frame.length === 0) return;
-    if (!txFrameQueueRef.current || txFrameQueueRef.current.length < targetSize * 4) {
-      txFrameQueueRef.current = new Int16Array(targetSize * 4);
+    if (!txFrameQueueRef!.current || txFrameQueueRef?.current!.length < targetSize * 4) {
+      txFrameQueueRef!.current = new Int16Array(targetSize * 4);
       txFrameOffsetRef.current = 0;
     }
     let offset = txFrameOffsetRef.current;
     let idx = 0;
     while (idx < frame.length) {
-      const space = txFrameQueueRef.current.length - offset;
+      const space = txFrameQueueRef?.current!.length - offset;
       const toCopy = Math.min(space, frame.length - idx);
-      txFrameQueueRef.current.set(frame.subarray(idx, idx + toCopy), offset);
+      txFrameQueueRef?.current!.set(frame.subarray(idx, idx + toCopy), offset);
       offset += toCopy;
       idx += toCopy;
       while (offset >= targetSize) {
-        const chunk = txFrameQueueRef.current.subarray(0, targetSize);
+        const chunk = txFrameQueueRef?.current!.subarray(0, targetSize);
         emit(new Int16Array(chunk));
         const remaining = offset - targetSize;
         if (remaining > 0) {
-          txFrameQueueRef.current.copyWithin(0, targetSize, offset);
+          txFrameQueueRef?.current!.copyWithin(0, targetSize, offset);
         }
         offset = remaining;
       }
-      if (offset >= txFrameQueueRef.current.length - targetSize) {
-        const next = new Int16Array(txFrameQueueRef.current.length * 2);
-        next.set(txFrameQueueRef.current.subarray(0, offset), 0);
-        txFrameQueueRef.current = next;
+      if (offset >= txFrameQueueRef?.current!.length - targetSize) {
+        const next = new Int16Array(txFrameQueueRef?.current!.length * 2);
+        next.set(txFrameQueueRef.current!.subarray(0, offset), 0);
+        txFrameQueueRef!.current = next;
       }
     }
     txFrameOffsetRef.current = offset;
@@ -986,14 +986,14 @@ export default function CommunityConsole() {
     txFrameSourceRef.current = null;
     txFrameSilentGainRef.current = null;
     txFrameCtxRef.current = null;
-    txFrameQueueRef.current = null;
+    txFrameQueueRef!.current = null;
     txFrameOffsetRef.current = 0;
   };
 
   const startVoiceFrameCapture = async (stream: MediaStream) => {
     if (!USE_SERVER_VOICE_FRAMES || !socket || !communityId) return;
     stopVoiceFrameCapture();
-    txFrameQueueRef.current = null;
+    txFrameQueueRef!.current = null;
     txFrameOffsetRef.current = 0;
     const AudioCtx =
       (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -3799,10 +3799,15 @@ export default function CommunityConsole() {
               data-interactive="true"
               className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
               // disabled={!channelChildrenEnabled}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                void transmitPtt(true, listenedChannelIds, "GLOBAL", true);
                 return;
-                // e.stopPropagation();
+              }}
+              onPointerUp={(e) => {
+                e.stopPropagation();
+                void transmitPtt(false, listenedChannelIds);
+                return;
               }}
             >
               <img
@@ -3879,7 +3884,7 @@ export default function CommunityConsole() {
             >
               <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
             </button>
-            <button
+            {/* <button
               id="panic-test-btn"
               data-interactive="true"
               className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#ff666699] bg-[#3A1212] text-[#FFB4B4] hover:bg-[#4A1919] text-sm leading-none font-semibold transition"
@@ -3890,7 +3895,7 @@ export default function CommunityConsole() {
               }}
             >
               Panic Test
-            </button>
+            </button> */}
 
             <button
               id="select-all-btn"
