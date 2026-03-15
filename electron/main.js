@@ -195,13 +195,14 @@ const createWindow = () => {
     // autoHideMenuBar: false,
     // titleBarStyle: "hidden",
     // ...(process.platform !== 'darwin' ? { titleBarOverlay: true } : { titleBarOverlay: true }),
+    
     webPreferences: {
-      sandbox: nodeEnv === "production", // sandbox only in production for security
-      // sandbox: false,
+      // sandbox: nodeEnv === "production", // sandbox only in production for security
+      sandbox: false,
       webSecurity: nodeEnv === "production", // disable in development for easier testing
       devTools: true,
       // devTools: nodeEnv === "development",
-      nodeIntegration: true,
+      nodeIntegration: false,
       contextIsolation: true,
       scrollBounce: true,
       preload: path.resolve(__dirname, "preload.js"), // preload script
