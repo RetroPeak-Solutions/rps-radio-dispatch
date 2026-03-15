@@ -3870,12 +3870,8 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                const targetChannels = listenedChannelIds
-                  .map((id) => radioChannelIdByZoneChannelId[id] || id)
-                  .filter(Boolean);
                 socket?.emit("dispatch:panic-cleared", {
                   communityId,
-                  channelIds: targetChannels.length > 0 ? targetChannels : undefined,
                   source: dispatchSource,
                   timestamp: Date.now(),
                 });
