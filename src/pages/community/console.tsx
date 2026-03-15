@@ -3865,8 +3865,13 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                socket?.emit("dispatch:panic-cleared", {
+                const activePanicChannels = Object.entries(channelPanicActive)
+                  .filter(([, active]) => active)
+                  .map(([id]) => id);
+                socket?.emit("dispatch:panic", {
                   communityId,
+                  channelIds: activePanicChannels,
+                  active: false,
                   source: dispatchSource,
                   timestamp: Date.now(),
                 });
