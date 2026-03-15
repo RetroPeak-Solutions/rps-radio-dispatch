@@ -92,7 +92,7 @@
     "publish": "vite build && electron-builder --p always",
     "publish:win": "electron-builder --win -p always",
     "publish:mac": "electron-builder --mac -p always",
-    "build": "npm run build:react && electron-builder always",
+    "build": "npm run build:react && electron-builder",
     "notarize": "node scripts/notarize.cjs",
     "release:ci": "node scripts/release-ci.cjs"
   },
