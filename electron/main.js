@@ -199,8 +199,8 @@ const createWindow = () => {
       sandbox: nodeEnv === "production", // sandbox only in production for security
       // sandbox: false,
       webSecurity: nodeEnv === "production", // disable in development for easier testing
-      // devTools: true,
-      devTools: nodeEnv === "development",
+      devTools: true,
+      // devTools: nodeEnv === "development",
       nodeIntegration: true,
       contextIsolation: true,
       scrollBounce: true,
