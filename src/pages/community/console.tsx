@@ -2650,8 +2650,9 @@ export default function CommunityConsole() {
       const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
       if (ids.length === 0) return;
       const normalizedIds = Array.from(
-        new Set(ids.map((id) => normalizeToZoneChannelId(id))),
+        new Set(ids.map((id) => normalizeToZoneChannelId(id)).filter(Boolean)),
       );
+      if (normalizedIds.length === 0) return;
       setChannelPanicActive((prev) => {
         const next = { ...prev };
         normalizedIds.forEach((id) => {
@@ -2677,8 +2678,12 @@ export default function CommunityConsole() {
         return;
       }
       const normalizedIds = Array.from(
-        new Set(ids.map((id) => normalizeToZoneChannelId(id))),
+        new Set(ids.map((id) => normalizeToZoneChannelId(id)).filter(Boolean)),
       );
+      if (normalizedIds.length === 0) {
+        setChannelPanicActive({});
+        return;
+      }
       setChannelPanicActive((prev) => {
         const next = { ...prev };
         normalizedIds.forEach((id) => {
@@ -3865,8 +3870,12 @@ export default function CommunityConsole() {
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
+                const targetChannels = listenedChannelIds
+                  .map((id) => radioChannelIdByZoneChannelId[id] || id)
+                  .filter(Boolean);
                 socket?.emit("dispatch:panic-cleared", {
                   communityId,
+                  channelIds: targetChannels.length > 0 ? targetChannels : undefined,
                   source: dispatchSource,
                   timestamp: Date.now(),
                 });
