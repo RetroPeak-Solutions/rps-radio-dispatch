@@ -1,15 +1,8 @@
-@import "../../../animations.css";
-
 #release-notes {
   max-height: 10rem;
   overflow-y: auto;
   padding: 0.5rem;
-}
-
-#release-notes ul.markdown-content {
-  list-style-type: disc;
-  padding-left: 17.5px;
-  /* color: blue; */
+ max-width: 60vw;
 }
 
 .markdown-content {
@@ -22,18 +15,57 @@
   padding-left: 20px;
 }
 
-.markdown-content li {
+.markdown-content li,
+.markdown-content p {
   font-size: 16px;
   line-height: 1.5;
+  white-space: pre-wrap; /* preserves \n as line breaks */
+  word-wrap: break-word;
 }
 
-/* List styles */
-/* .markdown-content ul {
+.markdown-content ul {
   list-style-type: disc;
   color: blue;
-} */
+  padding-left: 20px;
+}
 
 .markdown-content ol {
   list-style-type: upper-roman;
   color: green;
+}#release-notes {
+  max-height: 10rem;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.markdown-content {
+  margin: 0;
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.markdown-content li,
+.markdown-content p {
+  font-size: 16px;
+  line-height: 1.5;
+  white-space: pre-wrap; /* preserves \n as line breaks */
+  word-wrap: break-word;
+}
+
+.markdown-content ul {
+  list-style-type: disc;
+  color: blue;
+}
+
+.markdown-content ol {
+  list-style-type: upper-roman;
+  color: green;
+}
+
+ul.markdown-content {
+  padding-left: 20px;
 }

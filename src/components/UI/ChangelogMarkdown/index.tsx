@@ -20,6 +20,7 @@ export default function ChangelogMarkdown({ content }: ChangelogMarkdownProps) {
           ul: (props) => <ul className="markdown-content" {...props} />,
           ol: (props) => <ol className="markdown-content" {...props} />,
           li: ({ node, ...props }) => <li {...props} />,
+          br: ({ node, ...props }) => <br {...props} />,
         }}
       >
         {content}
