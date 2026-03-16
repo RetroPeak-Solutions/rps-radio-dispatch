@@ -12,7 +12,7 @@ export default function ChangelogMarkdown({ content }: ChangelogMarkdownProps) {
   return (
     <div
       id="release-notes"
-      className="max-h-40 overflow-y-auto p-2 bg-[#2f3136] rounded-lg text-gray-100 text-sm [&_ul]:list-disc [&_a]:text-blue-400"
+      className="max-h-40 overflow-y-auto p-2 bg-[#2f3136] rounded-lg text-gray-100 text-sm [&_ul]:list-disc [&_a]:text-blue-400 [&_li]:text-wrap"
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkBreaks]}
