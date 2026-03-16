@@ -25,12 +25,12 @@ export default function DashboardPage() {
     } | null>(null);
 
     const [query, setQuery] = useState("");
-    const [joinDialogOpen, setJoinDialogOpen] = useState(false);
-    const [createDialogOpen, setCreateDialogOpen] = useState(false);
-    const [inviteCode, setInviteCode] = useState("");
-    const [discoverQuery, setDiscoverQuery] = useState("");
-    const [communityName, setCommunityName] = useState("");
-    const [communityDescription, setCommunityDescription] = useState("");
+    // const [joinDialogOpen, setJoinDialogOpen] = useState(false);
+    // const [createDialogOpen, setCreateDialogOpen] = useState(false);
+    // const [inviteCode, setInviteCode] = useState("");
+    // const [discoverQuery, setDiscoverQuery] = useState("");
+    // const [communityName, setCommunityName] = useState("");
+    // const [communityDescription, setCommunityDescription] = useState("");
 
     useEffect(() => {
         let mounted = true;
@@ -88,17 +88,16 @@ export default function DashboardPage() {
         });
     }, [memberships, query]);
 
-    const handleLeaveCommunity = async (communityId: string) => {
-        const formData = new FormData();
-        formData.set("intent", "leaveCommunity");
-        formData.set("communityId", communityId);
-        await axios.post(`${link('prod')}/dashboard`, formData);
-        setMenu(null);
-    };
+    // const handleLeaveCommunity = async (communityId: string) => {
+    //     const formData = new FormData();
+    //     formData.set("intent", "leaveCommunity");
+    //     formData.set("communityId", communityId);
+    //     await axios.post(`${link('prod')}/dashboard`, formData);
+    //     setMenu(null);
+    // };
 
     return (
         <div>
-            {/* <WelcomeMessage user={{ firstName: user?.firstName!, lastName: user?.lastName! }} /> */}
             <ModernCard hoverScale={1}>
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
@@ -106,7 +105,7 @@ export default function DashboardPage() {
                         <p className="text-sm text-gray-400">Select a Community to Connect to its Dispatch Console.</p>
                     </div>
 
-                    <div className="relative min-w-[260px]">
+                    <div className="relative min-w-65">
                         <AuthStyledInput
                             id="community-search"
                             icon={Search}
@@ -178,7 +177,7 @@ export default function DashboardPage() {
 
             {menu && (
                 <div
-                    className="fixed z-50 min-w-[190px] rounded-xl border border-white/20 bg-[#0B1220]/95 p-2 shadow-2xl backdrop-blur-xl gap-2 flex flex-col"
+                    className="fixed z-50 min-w-47.5 rounded-xl border border-white/20 bg-[#0B1220]/95 p-2 shadow-2xl backdrop-blur-xl gap-2 flex flex-col"
                     style={{ left: menu.x, top: menu.y }}
                     onClick={(event) => event.stopPropagation()}
                 >

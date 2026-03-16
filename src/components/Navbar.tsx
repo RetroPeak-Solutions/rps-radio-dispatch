@@ -78,44 +78,6 @@ export default function Navbar() {
           </NavLink>
 
           <nav className="flex items-center gap-2">
-            {/* <NavLink
-              to="/"
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                  isActive
-                    ? "bg-white/15 text-white"
-                    : "text-gray-300 hover:bg-white/10"
-                }`
-              }
-              end
-            >
-              <LayoutDashboard className="h-4 w-4" /> Dashboard
-            </NavLink> */}
-            {/* {pathSegments === "/" && (
-              <>Test</>
-            )} */}
-            {/* <NavLink
-              to="/dashboard"
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                  isActive
-                    ? "bg-white/15 text-white"
-                    : "text-gray-300 hover:bg-white/10"
-                }`
-              }
-            >
-              <LayoutDashboard className="h-4 w-4" /> Dashboard
-            </NavLink> */}
-            {/* <NavLink
-              to="/account"
-              className={({ isActive }) =>
-                `flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                  isActive ? "bg-white/15 text-white" : "text-gray-300 hover:bg-white/10"
-                }`
-              }
-            >
-              <UserCog className="h-4 w-4" /> Account
-            </NavLink> */}
             <Button
               // disabled
               title="Settings"

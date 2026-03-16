@@ -1,0 +1,20 @@
+@import "../../../animations.css";
+
+.markdown-content ul {
+  list-style-type: disc;
+  color: blue;
+}
+
+.markdown-content ol {
+  list-style-type: upper-roman;
+  color: green;
+}
+
+.markdown-content li {
+  font-size: 16px;
+  line-height: 1.5;
+
+  animation: fadeInScale alternate;
+  animation-timeline: view();
+  animation-range: entry 0% cover 40%;
+}

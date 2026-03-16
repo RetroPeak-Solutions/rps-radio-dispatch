@@ -1,0 +1,32 @@
+/* For the entire app-wide scrollbar, target the body or a main container */
+body::-webkit-scrollbar, .app-container::-webkit-scrollbar {
+  width: 12px; /* Set the width of the vertical scrollbar */
+  height: 12px; /* Set the height of the horizontal scrollbar */
+}
+
+body::-webkit-scrollbar-track, .app-container::-webkit-scrollbar-track {
+  /* Use @apply to use Tailwind classes for background color */
+  @apply bg-gray-200 dark:bg-gray-800;
+  border-radius: 10px;
+}
+
+body::-webkit-scrollbar-thumb, .app-container::-webkit-scrollbar-thumb {
+  /* Use @apply to use Tailwind classes for the thumb color and shape */
+  @apply bg-blue-500 dark:bg-blue-600;
+  border-radius: 10px;
+  /* Optional: add a border with the track color to create a smaller thumb appearance */
+  /* border: 3px solid #edf2f7; */
+}
+
+body::-webkit-scrollbar-thumb:hover, .app-container::-webkit-scrollbar-thumb:hover {
+  @apply bg-blue-600 dark:bg-blue-400;
+}
+
+/* For Firefox compatibility (less styling options) */
+body {
+  scrollbar-width: thin; /* "auto" or "thin" */
+  scrollbar-color: #3b82f6 #e5e7eb; /* thumb color track color */
+  animation: fadeInScale linear;
+  animation-timeline: view();
+  animation-range: entry 0% cover 40%;
+}

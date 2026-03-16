@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { Sun, Cpu, Download, Check, Bell } from "lucide-react";
-import { AnimatedDropdownWithIcon } from "./UI/IconDropdown";
+import { Download, Check, Bell } from "lucide-react";
 import { Dialog } from "./UI/Dialog";
 import { SwitchToggle } from "./UI/SwitchToggle";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import ChangelogMarkdown from "./UI/ChangelogMarkdown";
 
 /* ================= TYPES ================= */
 type Settings = Awaited<ReturnType<typeof window.api.settings.get>>;
@@ -182,6 +180,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const updateField = <K extends keyof Settings>(key: K, value: Settings[K]) => {
     setSettings(prev => ({ ...prev, [key]: value }));
   };
+
   const saveSettings = async () => { await window.api?.settings.set(settings); onClose(); };
   const checkUpdates = async () => { setUpdateInfo(prev => ({ ...prev, status: "checking" })); await window.api?.updates?.check(); };
   const downloadUpdate = async () => { await window.api?.updates?.download(); };
@@ -263,11 +262,10 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           {/* Release Notes with Discord Markdown Styling */}
           <div className="mt-2">
             <label className="text-gray-200 font-medium">Release Notes</label>
-            <div className="max-h-40 overflow-y-auto p-2 bg-[#2f3136] rounded-lg text-gray-100 text-sm">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {updateInfo.releaseNotes || "No release notes loaded."}
-              </ReactMarkdown>
-            </div>
+            {/* <div id="release-notes" className="max-h-40 overflow-y-auto p-2 bg-[#2f3136] rounded-lg text-gray-100 text-sm [&_ul]:list-disc [&_a]:text-blue-400"> */}
+              {/* <ContentMarkdown content={updateInfo.releaseNotes ? `${updateInfo.releaseNotes}\n\n\n\n` : "No release notes loaded."} /> */}
+              <ChangelogMarkdown content={updateInfo.releaseNotes ?? "No release notes loaded."} />
+            {/* </div> */}
           </div>
 
         </div>
