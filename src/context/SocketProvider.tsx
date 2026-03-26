@@ -23,13 +23,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, url })
   useEffect(() => {
     if (!url) return;
 
-    const socketClient = io(url, {
-      path: "/socket.io", // default Socket.IO path
-      // Do NOT force websocket unless you control the server fully
-      // host: url,
+    const normalizedUrl = String(url).trim().replace(/\/+$/, "");
+
+    const socketClient = io(normalizedUrl, {
+      path: "/socket.io",
       autoConnect: true,
       withCredentials: true,
-      transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"],
     });
 
     // expose immediately so consumers can bind listeners before first connect/events
@@ -37,17 +37,23 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, url })
 
     const onConnect = () => {
       setConnected(true);
-      // socketClient?.
-      console.log('[SocketProvider] Connected Url:', url);
+      console.log('[SocketProvider] Connected Url:', normalizedUrl);
       console.log("[SocketProvider] Connected:", socketClient.id);
     };
     const onDisconnect = () => {
       setConnected(false);
       console.log("[SocketProvider] Disconnected");
     };
+    const onConnectError = (error: Error) => {
+      console.error("[SocketProvider] Connect error:", error.message, {
+        url: normalizedUrl,
+        transports: socketClient.io.opts.transports,
+      });
+    };
 
     socketClient.on("connect", onConnect);
     socketClient.on("disconnect", onDisconnect);
+    socketClient.on("connect_error", onConnectError);
 
     // Debug: log all events
     socketClient.onAny((event, ...args) => {
@@ -57,6 +63,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, url })
     return () => {
       socketClient.off("connect", onConnect);
       socketClient.off("disconnect", onDisconnect);
+      socketClient.off("connect_error", onConnectError);
       socketClient.disconnect();
     };
   }, [url]);

@@ -254,7 +254,7 @@ export default function Root(): JSX.Element {
   return (
     <AppErrorBoundary>
       <ThemeProvider>
-        <SocketProvider url={useSocketLink() ?? socketUrl}>
+        <SocketProvider url={socketUrl}>
           <BanStateProvider deviceId={realtimeDeviceId}>
             <ToastProvider>
               <IncomingVoiceProvider>
