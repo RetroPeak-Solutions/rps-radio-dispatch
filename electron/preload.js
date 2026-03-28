@@ -82,7 +82,9 @@ contextBridge.exposeInMainWorld("api", {
   },
 
   device: {
-    getId: () => ipcRenderer.invoke("device.getId"),
+    core: {
+      getId: () => ipcRenderer.invoke("device.core.getId"),
+    },
     system: {
       getInfo: () => ipcRenderer.invoke("device.system.getInfo"),
       getOsInfo: () => ipcRenderer.invoke("device.system.getOsInfo"),

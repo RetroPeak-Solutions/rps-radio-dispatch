@@ -191,7 +191,9 @@ declare global {
       // DEVICE NAMESPACE
       // =========================
       device: {
-        getId: () => Promise<string>;
+        core: {
+          getId: () => Promise<string>;
+        };
         system: {
           getInfo: () => Promise<{
             deviceId: string;
