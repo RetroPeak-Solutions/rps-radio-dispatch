@@ -429,7 +429,7 @@ ipcMain.handle("ptt.hotkeys.configure", async (_event, payload) => {
   return true;
 });
 
-ipcMain.handle("device.getId", async () => {
+ipcMain.handle("device.core.getId", async () => {
   return getDeviceInfo().deviceId;
 });
 
