@@ -508,7 +508,7 @@ export default function CommunityConsole() {
     let mounted = true;
     const readDeviceId = async () => {
       try {
-        const info = await window.api.device.getInfo();
+        const info = await window.api.device.system.getInfo();
         if (!mounted) return;
         setDeviceId(info.deviceId);
         setDeviceSerial(info.serialNumber ?? null);

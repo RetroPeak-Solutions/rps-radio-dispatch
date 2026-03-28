@@ -133,7 +133,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   useEffect(() => {
     if (deviceInfo.deviceId) return;
     async function getDeviceSerial() {
-      const res = await window.api.device.getInfo();
+      const res = await window.api.device.system.getInfo();
 
       setDeviceInfo(res);
     }

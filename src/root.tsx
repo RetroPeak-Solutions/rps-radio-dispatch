@@ -146,7 +146,7 @@ export default function Root(): JSX.Element {
     let mounted = true;
     const configureDispatchHeaders = async () => {
       try {
-        const info = await window.api.device.getInfo();
+        const info = await window.api.device.system.getInfo();
         if (!mounted) return;
         setRealtimeDeviceId(String(info.deviceId || ""));
         axios.defaults.headers.common["x-dispatch-device-id"] = info.deviceId;
@@ -200,7 +200,7 @@ export default function Root(): JSX.Element {
 
     const startAppSession = async () => {
       try {
-        const info = await window.api.device.getInfo();
+        const info = await window.api.device.system.getInfo();
         localHeaders["x-dispatch-device-id"] = info.deviceId;
         if (info.serialNumber) {
           localHeaders["x-dispatch-device-serial"] = info.serialNumber;

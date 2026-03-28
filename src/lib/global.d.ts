@@ -187,12 +187,65 @@ declare global {
         removeListeners: () => void;
       };
 
+      // =========================
+      // DEVICE NAMESPACE
+      // =========================
       device: {
         getId: () => Promise<string>;
-        getInfo: () => Promise<{
-          deviceId: string;
-          serialNumber: string | null;
-        }>;
+        system: {
+          getInfo: () => Promise<{
+            deviceId: string;
+            serialNumber: string | null;
+          }>;
+          getOsInfo: () => Promise<{
+            platform: NodeJS.Platform;
+            release: string;
+            arch: string;
+          }>;
+          getTheme: () => Promise<"light" | "dark" | "auto">;
+          getLocale: () => Promise<string>;
+          getTimezone: () => Promise<string>;
+          getBattery: () => Promise<{
+            level: number; // 0 to 1
+            charging: boolean;
+          }>;
+          getMemoryUsage: () => Promise<{
+            total: number; // in bytes
+            used: number; // in bytes
+            free: number; // in bytes
+          }>;
+          getNetworkStatus: () => Promise<{
+            online: boolean;
+            type: "wifi" | "ethernet" | "cellular" | "unknown";
+            downlink: number; // in Mbps
+            rtt: number; // in ms
+          }>;
+          getUptime: () => Promise<number>; // in seconds
+          getCpuInfo: () => Promise<{
+            model: string;
+            speed: number; // in MHz
+            cores: number;
+          }>;
+          getGpuInfo: () => Promise<{
+            model: string;
+            vendor: string;
+          }>;
+          getDiskInfo: () => Promise<{
+            total: number; // in bytes
+            used: number; // in bytes
+            free: number; // in bytes
+          }>;
+          getAudioDevices: () => Promise<{
+            input: {
+              id: string;
+              label: string;
+            }[];
+            output: {
+              id: string;
+              label: string;
+            }[];
+          }>;
+        }
       };
     };
   }

@@ -83,7 +83,21 @@ contextBridge.exposeInMainWorld("api", {
 
   device: {
     getId: () => ipcRenderer.invoke("device.getId"),
-    getInfo: () => ipcRenderer.invoke("device.getInfo"),
+    system: {
+      getInfo: () => ipcRenderer.invoke("device.system.getInfo"),
+      getOsInfo: () => ipcRenderer.invoke("device.system.getOsInfo"),
+      getTheme: () => ipcRenderer.invoke("device.system.getTheme"),
+      getLocale: () => ipcRenderer.invoke("device.system.getLocale"),
+      getTimezone: () => ipcRenderer.invoke("device.system.getTimezone"),
+      getBattery: () => ipcRenderer.invoke("device.system.getBattery"),
+      getMemoryUsage: () => ipcRenderer.invoke("device.system.getMemoryUsage"),
+      getNetworkStatus: () => ipcRenderer.invoke("device.system.getNetworkStatus"),
+      getUptime: () => ipcRenderer.invoke("device.system.getUptime"),
+      getCpuInfo: () => ipcRenderer.invoke("device.system.getCpuInfo"),
+      getGpuInfo: () => ipcRenderer.invoke("device.system.getGpuInfo"),
+      getDiskInfo: () => ipcRenderer.invoke("device.system.getDiskInfo"),
+      getAudioDevices: () => ipcRenderer.invoke("device.system.getAudioDevices"),
+    },
   },
 });
 

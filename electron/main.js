@@ -433,7 +433,7 @@ ipcMain.handle("device.getId", async () => {
   return getDeviceInfo().deviceId;
 });
 
-ipcMain.handle("device.getInfo", async () => {
+ipcMain.handle("device.system.getInfo", async () => {
   return getDeviceInfo();
 });
 
