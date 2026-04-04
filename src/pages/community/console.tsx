@@ -386,8 +386,7 @@ export default function CommunityConsole() {
   const { communityBans, setCommunityBan, clearCommunityBan } = useBanState();
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
-  const [deviceId, setDeviceId] = useState("");
-  const [deviceSerial, setDeviceSerial] = useState<string | null>(null);
+  const [deviceInfo, setDeviceInfo] = useState<{ deviceId: string; serialNumber: string | null } | null>(null);
   const [sessionUserId, setSessionUserId] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [consoleSettings, setConsoleSettings] = useState<ConsoleSettingsState>(
@@ -510,8 +509,7 @@ export default function CommunityConsole() {
       try {
         const info = await window.api.device.system.getInfo();
         if (!mounted) return;
-        setDeviceId(info.deviceId);
-        setDeviceSerial(info.serialNumber ?? null);
+        setDeviceInfo(info);
       } catch {
         // noop
       }
@@ -955,7 +953,7 @@ export default function CommunityConsole() {
         offset = remaining;
       }
       if (offset >= txFrameQueueRef?.current!.length - targetSize) {
-        const next = new Int16Array(txFrameQueueRef?.current!.length * 2);
+        const next: Int16Array = new Int16Array(txFrameQueueRef?.current!.length * 2);
         next.set(txFrameQueueRef.current!.subarray(0, offset), 0);
         txFrameQueueRef!.current = next;
       }
@@ -1152,7 +1150,7 @@ export default function CommunityConsole() {
     source.connect(inputGain);
     if (ENFORCE_REQUIRED_RADIO_VOCODER) {
       try {
-        const chain = createRadioEffectChain(ctx);
+        const chain = createRadioEffectChain(ctx as unknown as AudioContext);
         inputGain.connect(chain.input);
         chain.output.connect(gainNode);
       } catch (err) {
@@ -2283,15 +2281,20 @@ export default function CommunityConsole() {
           `${link("prod")}/api/communities/${communityId}`,
           {
             withCredentials: true,
-            headers: deviceId
+            headers: deviceInfo?.deviceId
               ? {
-                  "x-dispatch-device-id": deviceId,
-                  ...(deviceSerial
-                    ? { "x-dispatch-device-serial": deviceSerial }
-                    : {}),
+                  "x-dispatch-device-id": deviceInfo.deviceId,
+                  ...(deviceInfo?.serialNumber
+                    ? { "x-dispatch-device-serial": deviceInfo?.serialNumber }
+                    : { "x-dispatch-device-serial": "unknown" }),
                   "x-dispatch-client": "1",
                 }
-              : { "x-dispatch-client": "1" },
+              : { "x-dispatch-client": "1", "x-dispatch-device-id": "unknown", 
+                ...(deviceInfo?.serialNumber ? 
+                  { "x-dispatch-device-serial": deviceInfo?.serialNumber } : 
+                  { "x-dispatch-device-serial": "unknown" }
+                ),
+              }
           },
         );
         clearCommunityBan(communityId);
@@ -2341,26 +2344,17 @@ export default function CommunityConsole() {
     };
 
     fetchData();
-  }, [
-    communityId,
-    community,
-    setLoading,
-    banState,
-    deviceId,
-    deviceSerial,
-    navigate,
-    toast,
-  ]);
+  }, [communityId, community, setLoading, banState, navigate, toast, deviceInfo?.serialNumber, deviceInfo?.deviceId]);
 
   useEffect(() => {
-    if (!communityId || !community || !sessionUserId || !deviceId || banState) return;
-    const headers = deviceId
+    if (!communityId || !community || !sessionUserId || !deviceInfo?.deviceId || !deviceInfo.serialNumber || banState) return;
+    const headers = deviceInfo?.serialNumber
       ? {
-          "x-dispatch-device-id": deviceId,
-          ...(deviceSerial ? { "x-dispatch-device-serial": deviceSerial } : {}),
+          "x-dispatch-device-id": deviceInfo.deviceId,
+          ...(deviceInfo?.serialNumber ? { "x-dispatch-device-serial": deviceInfo?.serialNumber } : { "x-dispatch-device-serial": "unknown" }),
           "x-dispatch-client": "1",
         }
-      : { "x-dispatch-client": "1" };
+      : { "x-dispatch-client": "1", "x-dispatch-device-id": "unknown", "x-dispatch-device-serial": "unknown"};
     let heartbeatTimer: number | null = null;
     let ended = false;
     let liveSessionId = "";
@@ -2412,11 +2406,11 @@ export default function CommunityConsole() {
       }
       dispatchSessionIdRef.current = "";
     };
-  }, [communityId, community, sessionUserId, banState, deviceId, deviceSerial]);
+  }, [communityId, community, sessionUserId, banState, deviceInfo?.deviceId, deviceInfo?.serialNumber]);
 
   // ---------------- SOCKET JOIN + EVENTS ----------------
   useEffect(() => {
-    if (!socket || !communityId || !sessionUserId || !deviceId) return;
+    if (!socket || !communityId || !sessionUserId || !deviceInfo || !deviceInfo?.deviceId || !deviceInfo?.serialNumber) return;
 
     if (!banState) {
       debugLog("socket-effect:mount", {
@@ -2428,7 +2422,7 @@ export default function CommunityConsole() {
         communityId,
         source: "Dispatch Console",
         userId: sessionUserId,
-        deviceId,
+        deviceId: deviceInfo.deviceId,
       });
       socket.emit("dispatch:peer-id", {
         communityId,
@@ -2882,22 +2876,7 @@ export default function CommunityConsole() {
       socket.off("dispatch:voice-frame", onVoiceFrame);
       socket.emit("dispatch:leave", { communityId });
     };
-  }, [
-    socket,
-    communityId,
-    channelListening,
-    volumes,
-    allZoneChannelIds,
-    zoneChannelIdByRadioChannelId,
-    radioChannelIdByZoneChannelId,
-    consoleSettings.inputDeviceId,
-    consoleSettings.outputDeviceId,
-    listenedChannelIds,
-    applyWebRtcAudioForSocket,
-    sessionUserId,
-    deviceId,
-    banState,
-  ]);
+  }, [socket, communityId, channelListening, volumes, allZoneChannelIds, zoneChannelIdByRadioChannelId, radioChannelIdByZoneChannelId, consoleSettings.inputDeviceId, consoleSettings.outputDeviceId, listenedChannelIds, applyWebRtcAudioForSocket, sessionUserId, deviceInfo, deviceInfo?.deviceId, deviceInfo?.serialNumber, banState]);
 
   useEffect(() => {
     if (!socket || !communityId || !socket.id) return;

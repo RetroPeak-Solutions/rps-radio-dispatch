@@ -225,12 +225,12 @@ export default function Root(): JSX.Element {
         if (!liveSessionId) return;
         heartbeatTimer = window.setInterval(() => {
           if (ended || !liveSessionId) return;
-          void sendSessionEvent("heartbeat", liveSessionId).catch((err) => {
-            console.error("[DispatchSession] heartbeat failed:", err);
+          void sendSessionEvent("heartbeat", liveSessionId).catch((err: any) => {
+            console.error("[DispatchSession] heartbeat failed:", err?.message);
           });
         }, 30000);
-      } catch (err) {
-        console.error("[DispatchSession] start failed:", err);
+      } catch (err: any) {
+        console.error("[DispatchSession] start failed:", err?.response?.data?.message || err?.message || "Unknown error");
       }
     };
 
@@ -240,11 +240,9 @@ export default function Root(): JSX.Element {
       ended = true;
       if (heartbeatTimer) window.clearInterval(heartbeatTimer);
       if (liveSessionId) {
-        void sendSessionEvent("end", liveSessionId, "dispatch-app-unmount").catch(
-          (err) => {
-            console.error("[DispatchSession] end failed:", err);
-          },
-        );
+        void sendSessionEvent("end", liveSessionId, "dispatch-app-unmount").catch((err: any) => {
+          console.error("[DispatchSession] end failed:", err?.message);
+        });
       }
     };
   }, []);
