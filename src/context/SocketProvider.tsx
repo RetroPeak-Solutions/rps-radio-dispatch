@@ -29,7 +29,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children, url })
       path: "/socket.io",
       autoConnect: true,
       withCredentials: true,
-      transports: ["websocket", "polling"],
+      // transports: ["websocket", "polling"],
+      transports: ["polling", "websocket"], // try polling first for better compatibility, then upgrade to websocket
     });
 
     // expose immediately so consumers can bind listeners before first connect/events
