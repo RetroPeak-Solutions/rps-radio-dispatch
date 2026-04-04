@@ -150,14 +150,14 @@ export default function Root(): JSX.Element {
         if (!mounted) return;
         setRealtimeDeviceId(String(info.deviceId || ""));
         axios.defaults.headers.common["x-dispatch-device-id"] = info.deviceId;
-        if (info.serialNumber) {
-          axios.defaults.headers.common["x-dispatch-device-serial"] =
-            info.serialNumber;
-        }
+        axios.defaults.headers.common["x-dispatch-device-serial"] =
+          info.serialNumber || "unknown";
         axios.defaults.headers.common["x-dispatch-client"] = "1";
       } catch {
         if (!mounted) return;
         setRealtimeDeviceId("");
+        axios.defaults.headers.common["x-dispatch-device-id"] = "unknown";
+        axios.defaults.headers.common["x-dispatch-device-serial"] = "unknown";
         axios.defaults.headers.common["x-dispatch-client"] = "1";
       }
     };
@@ -202,11 +202,10 @@ export default function Root(): JSX.Element {
       try {
         const info = await window.api.device.system.getInfo();
         localHeaders["x-dispatch-device-id"] = info.deviceId;
-        if (info.serialNumber) {
-          localHeaders["x-dispatch-device-serial"] = info.serialNumber;
-        }
+        localHeaders["x-dispatch-device-serial"] = info.serialNumber || "unknown";
       } catch {
-        // noop
+        localHeaders["x-dispatch-device-id"] = "unknown";
+        localHeaders["x-dispatch-device-serial"] = "unknown";
       }
 
       try {

@@ -2347,14 +2347,12 @@ export default function CommunityConsole() {
   }, [communityId, community, setLoading, banState, navigate, toast, deviceInfo?.serialNumber, deviceInfo?.deviceId]);
 
   useEffect(() => {
-    if (!communityId || !community || !sessionUserId || !deviceInfo?.deviceId || !deviceInfo.serialNumber || banState) return;
-    const headers = deviceInfo?.serialNumber
-      ? {
-          "x-dispatch-device-id": deviceInfo.deviceId,
-          ...(deviceInfo?.serialNumber ? { "x-dispatch-device-serial": deviceInfo?.serialNumber } : { "x-dispatch-device-serial": "unknown" }),
-          "x-dispatch-client": "1",
-        }
-      : { "x-dispatch-client": "1", "x-dispatch-device-id": "unknown", "x-dispatch-device-serial": "unknown"};
+    if (!communityId || !community || !sessionUserId || !deviceInfo?.deviceId || banState) return;
+    const headers = {
+      "x-dispatch-device-id": deviceInfo.deviceId || "unknown",
+      "x-dispatch-device-serial": deviceInfo?.serialNumber || "unknown",
+      "x-dispatch-client": "1",
+    };
     let heartbeatTimer: number | null = null;
     let ended = false;
     let liveSessionId = "";
@@ -2410,7 +2408,7 @@ export default function CommunityConsole() {
 
   // ---------------- SOCKET JOIN + EVENTS ----------------
   useEffect(() => {
-    if (!socket || !communityId || !sessionUserId || !deviceInfo || !deviceInfo?.deviceId || !deviceInfo?.serialNumber) return;
+    if (!socket || !communityId || !sessionUserId || !deviceInfo || !deviceInfo?.deviceId) return;
 
     if (!banState) {
       debugLog("socket-effect:mount", {

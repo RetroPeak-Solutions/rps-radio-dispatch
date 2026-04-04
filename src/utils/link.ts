@@ -19,7 +19,7 @@ export function SocketLink(mode: 'dev' | 'prod') {
         return 'http://localhost:3000';
     }
 
-    return "https://rto-ws.retropeak.solutions";
+    return "https://rto.retropeak.solutions";
 }
 
 export function AuthUser() {

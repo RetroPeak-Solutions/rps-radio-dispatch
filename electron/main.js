@@ -6,7 +6,7 @@ import fs from "fs";
 import axios from "axios";
 import os from "os";
 import crypto from "crypto";
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 
 /** @type {"production" | "development"} */
 let nodeEnv = 'production';
@@ -78,7 +78,97 @@ function readSystemSerialNumber() {
     }
     if (process.platform === "win32") {
       const out = execSync("powershell -NoProfile -Command \"(Get-CimInstance Win32_BIOS).SerialNumber\"", { encoding: "utf8" }).trim();
-      return out || null;
+      const systemRoot = process.env.SystemRoot || "C:\\Windows";
+      const candidateCommands = [
+        {
+          bin: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"],
+        },
+        {
+          bin: "powershell.exe",
+          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"],
+        },
+        {
+          bin: "pwsh.exe",
+          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"],
+        },
+        {
+          bin: path.join(systemRoot, "System32", "wbem", "WMIC.exe"),
+          args: ["bios", "get", "serialnumber"],
+        },
+        {
+          bin: "wmic.exe",
+          args: ["bios", "get", "serialnumber"],
+        },
+        {
+          bin: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"],
+        },
+        {
+          bin: "powershell.exe",
+          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"],
+        },
+        {
+          bin: path.join(systemRoot, "System32", "wbem", "WMIC.exe"),
+          args: ["csproduct", "get", "uuid"],
+        },
+        {
+          bin: "wmic.exe",
+          args: ["csproduct", "get", "uuid"],
+        },
+        {
+          bin: "reg.exe",
+          args: ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
+        },
+      ];
+
+      const invalidValues = new Set([
+        "",
+        "serialnumber",
+        "uuid",
+        "system serial number",
+        "default string",
+        "to be filled by o.e.m.",
+        "to be filled by oem",
+        "unknown",
+        "none",
+        "null",
+        "0",
+      ]);
+
+      const normalizeWindowsIdentifier = (raw) => {
+        const value = String(raw || "")
+          .replace(/\r/g, "\n")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .filter((line) => !/^serialnumber$/i.test(line))
+          .filter((line) => !/^uuid$/i.test(line))
+          .filter((line) => !/^hkey_/i.test(line))
+          .map((line) => line.replace(/^MachineGuid\s+REG_SZ\s+/i, "").trim())
+          .find(Boolean);
+
+        if (!value) return null;
+        const lowered = value.toLowerCase();
+        if (invalidValues.has(lowered)) return null;
+        return value;
+      };
+
+      for (const command of candidateCommands) {
+        try {
+          const out = execFileSync(command.bin, command.args, {
+            encoding: "utf8",
+            windowsHide: true,
+            timeout: 5000,
+          });
+          const normalized = normalizeWindowsIdentifier(out);
+          if (normalized) return normalized;
+        } catch {
+          // try next command
+        }
+      }
+
+      return null;
     }
     if (process.platform === "linux") {
       const paths = [
