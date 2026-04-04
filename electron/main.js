@@ -77,7 +77,6 @@ function readSystemSerialNumber() {
       return out || null;
     }
     if (process.platform === "win32") {
-      const out = execSync("powershell -NoProfile -Command \"(Get-CimInstance Win32_BIOS).SerialNumber\"", { encoding: "utf8" }).trim();
       const systemRoot = process.env.SystemRoot || "C:\\Windows";
       const candidateCommands = [
         {
@@ -216,12 +215,46 @@ function computeDeviceSystemId(serialNumber = null) {
   }
 }
 
+function computeStableDeviceFingerprint() {
+  try {
+    const nets = os.networkInterfaces();
+    const macs = Object.values(nets)
+      .flat()
+      .filter(Boolean)
+      .map((entry) => entry.mac)
+      .filter((mac) => mac && mac !== "00:00:00:00:00:00")
+      .sort();
+    const cpuModel = os.cpus()?.[0]?.model ?? "unknown-cpu";
+    return crypto
+      .createHash("sha256")
+      .update(
+        [
+          os.platform(),
+          os.arch(),
+          os.hostname(),
+          cpuModel,
+          ...macs,
+        ].join("|"),
+      )
+      .digest("hex");
+  } catch {
+    return crypto
+      .createHash("sha256")
+      .update(String(app.getPath("userData") || "dispatch-device"))
+      .digest("hex");
+  }
+}
+
 function getDeviceInfo() {
-  const serialNumber = readSystemSerialNumber();
+  const rawSerialNumber = readSystemSerialNumber();
+  const fallbackFingerprint = computeStableDeviceFingerprint();
+  const serialNumber = rawSerialNumber
+    ? String(rawSerialNumber).trim().toLowerCase()
+    : `fallback-${fallbackFingerprint.slice(0, 24)}`;
   const deviceId = computeDeviceSystemId(serialNumber);
   return {
     deviceId,
-    serialNumber: serialNumber ? String(serialNumber).trim().toLowerCase() : null,
+    serialNumber,
   };
 }
 
