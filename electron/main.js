@@ -81,15 +81,15 @@ function readSystemSerialNumber() {
       const candidateCommands = [
         {
           bin: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"],
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_BIOS | Select-Object -ExpandProperty SerialNumber)"],
         },
         {
           bin: "powershell.exe",
-          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"],
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_BIOS | Select-Object -ExpandProperty SerialNumber)"],
         },
         {
           bin: "pwsh.exe",
-          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_BIOS).SerialNumber"],
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_BIOS | Select-Object -ExpandProperty SerialNumber)"],
         },
         {
           bin: path.join(systemRoot, "System32", "wbem", "WMIC.exe"),
@@ -101,11 +101,11 @@ function readSystemSerialNumber() {
         },
         {
           bin: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
-          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"],
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID)"],
         },
         {
           bin: "powershell.exe",
-          args: ["-NoProfile", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct).UUID"],
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID)"],
         },
         {
           bin: path.join(systemRoot, "System32", "wbem", "WMIC.exe"),
@@ -114,6 +114,26 @@ function readSystemSerialNumber() {
         {
           bin: "wmic.exe",
           args: ["csproduct", "get", "uuid"],
+        },
+        {
+          bin: path.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_BaseBoard | Select-Object -ExpandProperty SerialNumber)"],
+        },
+        {
+          bin: "powershell.exe",
+          args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "(Get-CimInstance Win32_BaseBoard | Select-Object -ExpandProperty SerialNumber)"],
+        },
+        {
+          bin: path.join(systemRoot, "System32", "wbem", "WMIC.exe"),
+          args: ["baseboard", "get", "serialnumber"],
+        },
+        {
+          bin: "wmic.exe",
+          args: ["baseboard", "get", "serialnumber"],
+        },
+        {
+          bin: path.join(systemRoot, "System32", "reg.exe"),
+          args: ["query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
         },
         {
           bin: "reg.exe",
@@ -161,12 +181,19 @@ function readSystemSerialNumber() {
             timeout: 5000,
           });
           const normalized = normalizeWindowsIdentifier(out);
-          if (normalized) return normalized;
+          if (normalized) {
+            console.log("[DeviceInfo] Windows hardware identifier resolved", {
+              command: command.bin,
+              valuePreview: `${normalized.slice(0, 10)}...`,
+            });
+            return normalized;
+          }
         } catch {
           // try next command
         }
       }
 
+      console.warn("[DeviceInfo] Windows hardware identifier lookup failed for all commands");
       return null;
     }
     if (process.platform === "linux") {
@@ -215,43 +242,17 @@ function computeDeviceSystemId(serialNumber = null) {
   }
 }
 
-function computeStableDeviceFingerprint() {
-  try {
-    const nets = os.networkInterfaces();
-    const macs = Object.values(nets)
-      .flat()
-      .filter(Boolean)
-      .map((entry) => entry.mac)
-      .filter((mac) => mac && mac !== "00:00:00:00:00:00")
-      .sort();
-    const cpuModel = os.cpus()?.[0]?.model ?? "unknown-cpu";
-    return crypto
-      .createHash("sha256")
-      .update(
-        [
-          os.platform(),
-          os.arch(),
-          os.hostname(),
-          cpuModel,
-          ...macs,
-        ].join("|"),
-      )
-      .digest("hex");
-  } catch {
-    return crypto
-      .createHash("sha256")
-      .update(String(app.getPath("userData") || "dispatch-device"))
-      .digest("hex");
-  }
-}
-
 function getDeviceInfo() {
   const rawSerialNumber = readSystemSerialNumber();
-  const fallbackFingerprint = computeStableDeviceFingerprint();
   const serialNumber = rawSerialNumber
     ? String(rawSerialNumber).trim().toLowerCase()
-    : `fallback-${fallbackFingerprint.slice(0, 24)}`;
+    : null;
   const deviceId = computeDeviceSystemId(serialNumber);
+  console.log("[DeviceInfo] getDeviceInfo", {
+    hasSerialNumber: !!serialNumber,
+    deviceIdPreview: String(deviceId || "").slice(0, 24),
+    serialPreview: serialNumber ? `${serialNumber.slice(0, 10)}...` : null,
+  });
   return {
     deviceId,
     serialNumber,
