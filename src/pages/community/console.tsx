@@ -1030,6 +1030,7 @@ export default function CommunityConsole() {
               communityId,
               channelIds: activeChannels,
               source: dispatchSource,
+              originClientType: "dispatch",
               sampleRate: 16000,
               frameBase64: encodeInt16ToBase64(chunk),
               timestamp: Date.now(),
@@ -1056,6 +1057,7 @@ export default function CommunityConsole() {
             communityId,
             channelIds: activeChannels,
             source: dispatchSource,
+            originClientType: "dispatch",
             sampleRate: 16000,
             frameBase64: encodeInt16ToBase64(chunk),
             timestamp: Date.now(),
@@ -2772,12 +2774,14 @@ export default function CommunityConsole() {
       chunkBase64?: string;
       mimeType?: string;
       socketId?: string;
+      originClientType?: string;
     }) => {
       debugLog("socket:onVoice", {
         socketId: event?.socketId,
         channelIds: event?.channelIds,
         chunkSize: event?.chunkBase64?.length ?? 0,
         mimeType: event?.mimeType,
+        originClientType: event?.originClientType ?? "unknown",
       });
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
@@ -2808,6 +2812,7 @@ export default function CommunityConsole() {
       frameBase64?: string;
       sampleRate?: number;
       socketId?: string;
+      originClientType?: string;
     }) => {
       console.log('[VoiceFrame] Incoming Voice Frame:', event);
       if (
