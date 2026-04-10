@@ -2776,6 +2776,9 @@ export default function CommunityConsole() {
       socketId?: string;
       originClientType?: string;
     }) => {
+      console.log(
+        `[VOICE ORIGIN][dispatch][chunk] ${event?.originClientType ?? "unknown"}`,
+      );
       debugLog("socket:onVoice", {
         socketId: event?.socketId,
         channelIds: event?.channelIds,
@@ -2814,6 +2817,9 @@ export default function CommunityConsole() {
       socketId?: string;
       originClientType?: string;
     }) => {
+      console.log(
+        `[VOICE ORIGIN][dispatch][frame] ${event?.originClientType ?? "unknown"}`,
+      );
       console.log('[VoiceFrame] Incoming Voice Frame:', event);
       if (
         !event?.frameBase64 ||
