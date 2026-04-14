@@ -55,7 +55,7 @@
         "zip"
       ],
       "hardenedRuntime": true,
-      "gatekeeperAssess": true,
+      "gatekeeperAssess": false,
       "entitlements": "electron/entitlements.mac.plist",
       "entitlementsInherit": "electron/entitlements.mac.plist",
       "icon": "electron/icons/app.icns"
