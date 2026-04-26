@@ -127,16 +127,17 @@ export default function DashboardPage() {
                     {filteredMemberships.map((membership) => {
                         const communityBan = bansByCommunityId?.[membership.communityId] ?? null;
                         const isBanned = Boolean(communityBan);
+                        const hasDispatchAccess = Boolean(membership?.canDispatchAccess);
                         return (
                         <div
                             key={membership.id}
                             onClick={() => {
-                                if (isBanned) return;
+                                if (isBanned || !hasDispatchAccess) return;
                                 navigate(`/${membership.communityId}/console`);
                             }}
                             onContextMenu={(event) => {
                                 event.preventDefault();
-                                if (isBanned) return;
+                                if (isBanned || !hasDispatchAccess) return;
                                 setMenu({
                                     x: event.clientX,
                                     y: event.clientY,
@@ -144,7 +145,7 @@ export default function DashboardPage() {
                                     communityOwner: membership.role === "OWNER",
                                 });
                             }}
-                            className={isBanned ? "cursor-not-allowed opacity-70" : "cursor-pointer"}
+                            className={isBanned || !hasDispatchAccess ? "cursor-not-allowed opacity-70" : "cursor-pointer"}
                         >
                             <ModernCard hoverScale={1.02} contentClassName="space-y-3">
                                 <div className="flex items-start justify-between">
@@ -165,6 +166,10 @@ export default function DashboardPage() {
                                         <p className="text-red-300">
                                             <span className="text-red-400">Access:</span> Banned
                                             {communityBan?.reason ? ` • ${communityBan.reason}` : ""}
+                                        </p>
+                                    ) : !hasDispatchAccess ? (
+                                        <p className="text-amber-300">
+                                            <span className="text-amber-400">Access:</span> No dispatch console permission
                                         </p>
                                     ) : null}
                                 </div>
