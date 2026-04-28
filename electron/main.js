@@ -357,10 +357,17 @@ const createWindow = () => {
   // win.webContents.openDevTools();
 
   const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
-  if (VITE_DEV_SERVER_URL) {
+  const packagedIndexPath = path.join(__dirname, "../dist/index.html");
+  const useDevServer = !app.isPackaged && Boolean(VITE_DEV_SERVER_URL);
+
+  console.log("[Main] app.isPackaged:", app.isPackaged);
+  console.log("[Main] packagedIndexPath:", packagedIndexPath);
+  console.log("[Main] packagedIndexExists:", fs.existsSync(packagedIndexPath));
+
+  if (useDevServer && VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path.join(__dirname, "../dist/index.html"));
+    win.loadFile(packagedIndexPath);
   }
 };
 

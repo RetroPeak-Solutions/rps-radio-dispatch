@@ -207,6 +207,10 @@ export function BanStateProvider({
 
   const refreshCommunityBanState = useCallback(async () => {
     try {
+      const authRes = await axios.get(AuthUser(), { withCredentials: true });
+      if (!authRes?.data?.user?.id) {
+        return;
+      }
       const res = await axios.get(`${link("prod")}/api/auth/communities`, {
         withCredentials: true,
       });
@@ -227,7 +231,10 @@ export function BanStateProvider({
         },
       );
       setCommunityBans(next);
-    } catch {
+    } catch (err: any) {
+      if (err?.response?.status === 401) {
+        return;
+      }
       // leave previous snapshot intact on transient failures
     }
   }, []);

@@ -33,12 +33,12 @@ export default function DashboardPage() {
     // const [communityDescription, setCommunityDescription] = useState("");
 
     useEffect(() => {
-        let mounted = true;
         const loadSession = async () => {
             setLoading(true);
             await getSessionUser({
                 onSuccess(User: any) {
                     setUser(User);
+                    void getMemberships();
                 },
                 onFailed(data: any) {
                     console.log("failed to get Session User:", data?.message);
@@ -48,10 +48,6 @@ export default function DashboardPage() {
             setLoading(false);
         };
         void loadSession();
-        void getMemberships();
-        return () => {
-            mounted = false;
-        };
     }, []);
 
     async function getMemberships() {
