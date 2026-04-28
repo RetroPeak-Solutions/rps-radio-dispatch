@@ -4,9 +4,9 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 
-function run(cmd, args) {
+function run(cmd, args, opts = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, { stdio: "inherit" });
+    const child = spawn(cmd, args, { stdio: "inherit", ...opts });
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve();
@@ -20,23 +20,49 @@ module.exports = async function notarize(context) {
   if (electronPlatformName !== "darwin") return;
 
   const appleId = process.env.APPLE_ID;
-  const applePassword = process.env.APPLE_APP_SPECIFIC_PASSWORD;
-  const teamId = process.env.APPLE_TEAM_ID;
+  const applePassword =
+    process.env.APPLE_APP_SPECIFIC_PASSWORD || process.env.APPLE_APP_PASSWORD;
+  const teamId = process.env.APPLE_TEAM_ID || process.env.CSC_TEAM_ID;
   const appleApiKey = process.env.APPLE_API_KEY;
   const appleApiKeyPath = process.env.APPLE_API_KEY_PATH;
-  const appleApiKeyId = process.env.APPLE_API_KEY_ID;
-  const appleApiIssuer = process.env.APPLE_API_ISSUER;
+  const appleApiKeyId = process.env.APPLE_API_KEY_ID || process.env.APPLE_KEY_ID;
+  const appleApiIssuer = process.env.APPLE_API_ISSUER || process.env.APPLE_ISSUER_ID;
 
   const hasAppleIdFlow = !!(appleId && applePassword && teamId);
   const hasApiKeyFlow = !!(appleApiKeyPath && appleApiKeyId && appleApiIssuer) || !!(appleApiKey && appleApiKeyId && appleApiIssuer);
+  const skipNotarize = process.env.SKIP_NOTARIZE === "1";
 
-  if (!hasAppleIdFlow && !hasApiKeyFlow) {
-    console.log("[notarize] Missing notarization credentials. Provide Apple ID flow or API key flow. Skipping notarization.");
+  if (!hasAppleIdFlow && !hasApiKeyFlow && !skipNotarize) {
+    throw new Error(
+      "[notarize] Missing notarization credentials. Set Apple ID flow " +
+      "(APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID) or API key flow " +
+      "(APPLE_API_KEY_PATH or APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER).",
+    );
+  }
+
+  if (skipNotarize) {
+    console.log("[notarize] SKIP_NOTARIZE=1 set. Skipping notarization by explicit request.");
     return;
   }
 
   const appName = packager.appInfo.productFilename;
-  const appPath = path.join(appOutDir, `${appName}.app`);
+  let appPath = path.join(appOutDir, `${appName}.app`);
+  if (!fs.existsSync(appPath)) {
+    const candidates = fs
+      .readdirSync(appOutDir)
+      .filter((entry) => entry.endsWith(".app"))
+      .map((entry) => path.join(appOutDir, entry));
+    if (candidates.length === 1) {
+      appPath = candidates[0];
+    }
+  }
+  if (!fs.existsSync(appPath)) {
+    throw new Error(`[notarize] Could not find app bundle to notarize in: ${appOutDir}`);
+  }
+
+  // Ensure signature is present and usable before notarization.
+  console.log("[notarize] Verifying code signature before submit...");
+  await run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
 
   console.log(`[notarize] Submitting ${appPath} to Apple notarization service...`);
   let generatedKeyPath = null;
@@ -59,6 +85,10 @@ module.exports = async function notarize(context) {
 
   console.log("[notarize] Stapling notarization ticket...");
   await run("xcrun", ["stapler", "staple", appPath]);
+  console.log("[notarize] Validating stapled ticket...");
+  await run("xcrun", ["stapler", "validate", appPath]);
+  console.log("[notarize] Verifying Gatekeeper assessment...");
+  await run("spctl", ["-a", "-vv", appPath]);
   console.log("[notarize] Completed.");
 
   if (generatedKeyPath) {

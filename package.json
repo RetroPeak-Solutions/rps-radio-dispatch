@@ -10,12 +10,13 @@
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-  "version": "1.2.3",
+  "version": "1.2.4",
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
   "license": "MIT",
   "build": {
+    "forceCodeSigning": true,
     "afterSign": "scripts/notarize.cjs",
     "publish": [
       {
@@ -91,7 +92,7 @@
     "preview": "vite preview",
     "publish": "vite build && electron-builder --p always",
     "publish:win": "electron-builder --win --p always",
-    "publish:mac": "electron-builder --mac --p always",
+    "publish:mac": "cross-env SKIP_NOTARIZE=0 electron-builder --mac --p always",
     "build": "npm run build:react && electron-builder",
     "build:nopublish": "npm run build:react && electron-builder --p never",
     "notarize": "node scripts/notarize.cjs",
