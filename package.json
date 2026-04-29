@@ -39,15 +39,9 @@
     "artifactName": "RetroRadio-${version}-${arch}.${ext}",
     "appId": "solutions.retropeak.rto",
     "files": [
-      "dist-electron",
-      "dist",
-      "node_modules",
-      "package.json",
-      "src",
       "dist/**/*",
-      "electron/**/*",
-      "public",
-      "tsconfig.json"
+      "package.json",
+      "electron/**/*"
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -66,7 +60,8 @@
       "icon": "electron/icons/app.ico"
     },
     "directories": {
-      "buildResources": "assets"
+      "buildResources": "assets",
+      "output": "release"
     },
     "nsis": {
       "perMachine": false,
@@ -92,7 +87,7 @@
     "preview": "vite preview",
     "publish": "vite build && electron-builder --p always",
     "publish:win": "electron-builder --win --p always",
-    "publish:mac": "cross-env SKIP_NOTARIZE=0 electron-builder --mac --p always",
+    "publish:mac": "npm run build:react && cross-env SKIP_NOTARIZE=0 electron-builder --mac --p always",
     "build": "npm run build:react && electron-builder",
     "build:nopublish": "npm run build:react && electron-builder --p never",
     "notarize": "node scripts/notarize.cjs",
