@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { Tab } from "@headlessui/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -43,6 +43,12 @@ type Position = { x: string; y: string };
 type CommunityData = {
   id: string;
   name: string;
+  servers?: Array<{
+    id: string;
+    label: string;
+    ip: string;
+    port: string;
+  }>;
   members?: Array<{
     userId: string;
     radioId?: string | null;
@@ -379,13 +385,19 @@ function DraggableItem({
 export default function CommunityConsole() {
   const navigate = useNavigate();
   const params = useParams();
+  const [searchParams] = useSearchParams();
   const communityId = params.id;
+  const selectedServerId = searchParams.get("serverId") || "";
   const { setLoading } = useLoading();
   const { socket } = useSocket();
   const { toast } = useToast();
   const { communityBans, setCommunityBan, clearCommunityBan } = useBanState();
 
   const [community, setCommunity] = useState<CommunityData | null>(null);
+  const selectedServer = useMemo(() => {
+    if (!community?.servers?.length || !selectedServerId) return null;
+    return community.servers.find((server) => server.id === selectedServerId) ?? null;
+  }, [community?.servers, selectedServerId]);
   const [deviceInfo, setDeviceInfo] = useState<{ deviceId: string; serialNumber: string | null } | null>(null);
   const [sessionUserId, setSessionUserId] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -1028,6 +1040,7 @@ export default function CommunityConsole() {
           enqueueTxFrames(frame, (chunk) => {
             socket.emit("dispatch:voice-frame", {
               communityId,
+              serverId: selectedServerId,
               channelIds: activeChannels,
               source: dispatchSource,
               originClientType: "dispatch",
@@ -1055,6 +1068,7 @@ export default function CommunityConsole() {
         enqueueTxFrames(frame, (chunk) => {
           socket.emit("dispatch:voice-frame", {
             communityId,
+            serverId: selectedServerId,
             channelIds: activeChannels,
             source: dispatchSource,
             originClientType: "dispatch",
@@ -1377,6 +1391,7 @@ export default function CommunityConsole() {
       });
       socket.emit("dispatch:webrtc-signal", {
         communityId,
+        serverId: selectedServerId,
         targetSocketId,
         candidate: event.candidate.toJSON
           ? event.candidate.toJSON()
@@ -1539,6 +1554,7 @@ export default function CommunityConsole() {
         await pc.setLocalDescription(offer);
         socket.emit("dispatch:webrtc-signal", {
           communityId,
+          serverId: selectedServerId,
           targetSocketId,
           description: pc.localDescription,
         });
@@ -1754,6 +1770,7 @@ export default function CommunityConsole() {
     });
     socket?.emit("dispatch:tone", {
       communityId,
+      serverId: selectedServerId,
       channelIds: bridgeChannelIds,
       source: dispatchSource,
       tones: [holdTone],
@@ -1822,6 +1839,7 @@ export default function CommunityConsole() {
     });
     socket?.emit("dispatch:tone", {
       communityId,
+      serverId: selectedServerId,
       channelIds: bridgeChannelIds,
       source: dispatchSource,
       tones: [tone],
@@ -1869,6 +1887,7 @@ export default function CommunityConsole() {
     }
     socket?.emit("dispatch:panic", {
       communityId,
+      serverId: selectedServerId,
       channelIds: newlyActivatedChannels,
       active: true,
       source: dispatchSource,
@@ -1897,6 +1916,7 @@ export default function CommunityConsole() {
       });
       socket?.emit("dispatch:listen", {
         communityId,
+        serverId: selectedServerId,
         channelId,
         listening: next,
       });
@@ -1904,6 +1924,7 @@ export default function CommunityConsole() {
       if (radioChannelId) {
         socket?.emit("dispatch:listen", {
           communityId,
+          serverId: selectedServerId,
           channelId: radioChannelId,
           listening: next,
         });
@@ -1920,12 +1941,14 @@ export default function CommunityConsole() {
         next[ch.id] = nextListening;
         socket?.emit("dispatch:listen", {
           communityId,
+          serverId: selectedServerId,
           channelId: ch.id,
           listening: nextListening,
         });
         if (ch.channelId) {
           socket?.emit("dispatch:listen", {
             communityId,
+            serverId: selectedServerId,
             channelId: ch.channelId,
             listening: nextListening,
           });
@@ -2148,6 +2171,7 @@ export default function CommunityConsole() {
 
       socket?.emit("dispatch:ptt", {
         communityId,
+        serverId: selectedServerId,
         channelIds: bridgeChannelIds,
         active,
         source: dispatchSource,
@@ -2235,6 +2259,7 @@ export default function CommunityConsole() {
     });
     socket?.emit("dispatch:tone", {
       communityId,
+      serverId: selectedServerId,
       channelIds: bridgeChannelIds,
       source: dispatchSource,
       tones,
@@ -2303,6 +2328,27 @@ export default function CommunityConsole() {
         setCommunity(res.data.community);
         setSessionUserId(res.data?.user?.id ?? "");
 
+        const servers = Array.isArray(res.data?.community?.servers)
+          ? res.data.community.servers
+          : [];
+        if (servers.length > 0 && !selectedServerId) {
+          toast("Select a FiveM server before entering console.", {
+            type: "warning",
+          });
+          navigate("/", { replace: true });
+          return;
+        }
+        if (servers.length > 0 && selectedServerId) {
+          const exists = servers.some((server: any) => String(server.id) === selectedServerId);
+          if (!exists) {
+            toast("Selected server was not found in this community.", {
+              type: "error",
+            });
+            navigate("/", { replace: true });
+            return;
+          }
+        }
+
         const loaded = normalizeSettings(
           (await window.api?.settings?.get?.()) ?? null,
         )
@@ -2346,7 +2392,7 @@ export default function CommunityConsole() {
     };
 
     fetchData();
-  }, [communityId, community, setLoading, banState, navigate, toast, deviceInfo?.serialNumber, deviceInfo?.deviceId]);
+  }, [communityId, community, setLoading, banState, navigate, toast, deviceInfo?.serialNumber, deviceInfo?.deviceId, selectedServerId]);
 
   useEffect(() => {
     if (!communityId || !community || !sessionUserId || !deviceInfo?.deviceId || banState) return;
@@ -2420,12 +2466,14 @@ export default function CommunityConsole() {
       });
       socket.emit("dispatch:join", {
         communityId,
+        serverId: selectedServerId,
         source: "Dispatch Console",
         userId: sessionUserId,
         deviceId: deviceInfo.deviceId,
       });
       socket.emit("dispatch:peer-id", {
         communityId,
+        serverId: selectedServerId,
         peerId: socket.id,
         socketId: socket.id,
         channelIds: listenedChannelIds,
@@ -2441,6 +2489,7 @@ export default function CommunityConsole() {
       if (event.type === "join") {
         socket.emit("dispatch:peer-id", {
           communityId,
+          serverId: selectedServerId,
           peerId: socket.id,
           socketId: socket.id,
           channelIds: listenedChannelIds,
@@ -2883,7 +2932,7 @@ export default function CommunityConsole() {
       socket.off("dispatch:ptt-status", onPttStatus);
       socket.off("dispatch:voice", onVoice);
       socket.off("dispatch:voice-frame", onVoiceFrame);
-      socket.emit("dispatch:leave", { communityId });
+      socket.emit("dispatch:leave", { communityId, serverId: selectedServerId });
     };
   }, [socket, communityId, channelListening, volumes, allZoneChannelIds, zoneChannelIdByRadioChannelId, radioChannelIdByZoneChannelId, consoleSettings.inputDeviceId, consoleSettings.outputDeviceId, listenedChannelIds, applyWebRtcAudioForSocket, sessionUserId, deviceInfo, deviceInfo?.deviceId, deviceInfo?.serialNumber, banState]);
 
@@ -2897,6 +2946,7 @@ export default function CommunityConsole() {
     setPeerIdState(socket.id);
     socket.emit("dispatch:peer-id", {
       communityId,
+      serverId: selectedServerId,
       peerId: socket.id,
       socketId: socket.id,
       channelIds: listenedChannelIds,
@@ -2976,6 +3026,7 @@ export default function CommunityConsole() {
             await pc.setLocalDescription(answer);
             socket.emit("dispatch:webrtc-signal", {
               communityId,
+              serverId: selectedServerId,
               targetSocketId: event.fromSocketId,
               description: pc.localDescription,
             });
@@ -3743,6 +3794,11 @@ export default function CommunityConsole() {
                 draggable={false}
               />
               <h1 className="mt-2">{community.name} | Dispatch Console</h1>
+              {selectedServer ? (
+                <span className="mt-2 ml-3 text-xs rounded border border-white/20 bg-white/10 px-2 py-1">
+                  Server: {selectedServer.label} ({selectedServer.ip}:{selectedServer.port})
+                </span>
+              ) : null}
             </div>
             <div className="flex gap-2">
               <div
@@ -3865,6 +3921,7 @@ export default function CommunityConsole() {
                 e.stopPropagation();
                 socket?.emit("dispatch:panic-cleared", {
                   communityId,
+                  serverId: selectedServerId,
                   source: dispatchSource,
                   timestamp: Date.now(),
                 });

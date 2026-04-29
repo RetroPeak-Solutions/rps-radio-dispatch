@@ -9,9 +9,11 @@ import { Button } from "@components/UI/Button";
 import { ChevronRight, Search } from "lucide-react";
 import AuthStyledInput from "@components/UI/AuthStyledInput";
 import ModernCard from "@components/UI/ModernCard";
+import { useToast } from "@context/ToastProvider";
 
 export default function DashboardPage() {
     const { setLoading } = useLoading();
+    const { toast } = useToast();
     const navigate = useNavigate();
     const [user, setUser] = useState<User | undefined>();
     const [memberships, setMemberships] = useState<any[]>([]);
@@ -25,6 +27,11 @@ export default function DashboardPage() {
     } | null>(null);
 
     const [query, setQuery] = useState("");
+    const [serverPicker, setServerPicker] = useState<{
+        communityId: string;
+        communityName: string;
+        servers: Array<{ id: string; label: string; ip: string; port: string }>;
+    } | null>(null);
     // const [joinDialogOpen, setJoinDialogOpen] = useState(false);
     // const [createDialogOpen, setCreateDialogOpen] = useState(false);
     // const [inviteCode, setInviteCode] = useState("");
@@ -92,6 +99,28 @@ export default function DashboardPage() {
     //     setMenu(null);
     // };
 
+    const openCommunityConsole = (membership: any) => {
+        const servers = Array.isArray(membership?.community?.servers)
+            ? membership.community.servers
+            : [];
+
+        if (servers.length === 0) {
+            toast("No FiveM servers are configured for this community yet.", { type: "warning" });
+            return;
+        }
+
+        setServerPicker({
+            communityId: membership.communityId,
+            communityName: membership.community.name,
+            servers: servers.map((s: any) => ({
+                id: String(s.id),
+                label: String(s.label || "Unnamed Server"),
+                ip: String(s.ip || ""),
+                port: String(s.port || ""),
+            })),
+        });
+    };
+
     return (
         <div>
             <ModernCard hoverScale={1}>
@@ -129,7 +158,7 @@ export default function DashboardPage() {
                             key={membership.id}
                             onClick={() => {
                                 if (isBanned || !hasDispatchAccess) return;
-                                navigate(`/${membership.communityId}/console`);
+                                openCommunityConsole(membership);
                             }}
                             onContextMenu={(event) => {
                                 event.preventDefault();
@@ -185,8 +214,13 @@ export default function DashboardPage() {
                     <Button
                         className="w-full cursor-pointer bg-[#3C83F61A] border border-[#3C83F61A] text-[#3C83F6] active:scale-[1.02]"
                         onClick={() => {
+                            const membership = memberships.find((m) => m.communityId === menu.communityId);
                             setMenu(null);
-                            navigate(`/${menu.communityId}/console`);
+                            if (!membership) {
+                                navigate(`/${menu.communityId}/console`);
+                                return;
+                            }
+                            openCommunityConsole(membership);
                         }}
                     >
                         View Community
@@ -196,6 +230,50 @@ export default function DashboardPage() {
                             Leave Community
                         </Button>
                     )} */}
+                </div>
+            )}
+
+            {serverPicker && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+                    onClick={() => setServerPicker(null)}
+                >
+                    <div
+                        className="w-full max-w-xl rounded-2xl border border-white/20 bg-[#0B1220] p-5"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <h3 className="text-xl font-semibold text-white">Select FiveM Server</h3>
+                        <p className="mt-1 text-sm text-gray-400">
+                            Choose a server for {serverPicker.communityName} before entering console.
+                        </p>
+                        <div className="mt-4 space-y-2">
+                            {serverPicker.servers.map((server) => (
+                                <button
+                                    key={server.id}
+                                    className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-left transition hover:bg-white/10"
+                                    onClick={() => {
+                                        navigate(
+                                            `/${serverPicker.communityId}/console?serverId=${encodeURIComponent(server.id)}`,
+                                        );
+                                        setServerPicker(null);
+                                    }}
+                                >
+                                    <div className="text-white font-medium">{server.label}</div>
+                                    <div className="text-xs text-gray-300">
+                                        {server.ip}:{server.port}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                        <div className="mt-4 flex justify-end">
+                            <Button
+                                className="cursor-pointer border border-white/20 bg-white/5 text-white"
+                                onClick={() => setServerPicker(null)}
+                            >
+                                Cancel
+                            </Button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
