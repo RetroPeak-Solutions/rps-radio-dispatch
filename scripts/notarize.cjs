@@ -59,14 +59,21 @@ module.exports = async function notarize(context) {
   if (!fs.existsSync(appPath)) {
     throw new Error(`[notarize] Could not find app bundle to notarize in: ${appOutDir}`);
   }
+  const zipPath = path.join(appOutDir, `${appName}-notarize.zip`);
 
   // Ensure signature is present and usable before notarization.
   console.log("[notarize] Verifying code signature before submit...");
   await run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appPath]);
 
-  console.log(`[notarize] Submitting ${appPath} to Apple notarization service...`);
+  console.log(`[notarize] Creating notarization archive: ${zipPath}`);
+  if (fs.existsSync(zipPath)) {
+    fs.unlinkSync(zipPath);
+  }
+  await run("ditto", ["-c", "-k", "--sequesterRsrc", "--keepParent", appPath, zipPath]);
+
+  console.log(`[notarize] Submitting ${zipPath} to Apple notarization service...`);
   let generatedKeyPath = null;
-  const submitArgs = ["notarytool", "submit", appPath, "--wait"];
+  const submitArgs = ["notarytool", "submit", zipPath, "--wait"];
 
   if (hasApiKeyFlow) {
     let keyPath = appleApiKeyPath;
@@ -97,4 +104,9 @@ module.exports = async function notarize(context) {
       fs.rmdirSync(path.dirname(generatedKeyPath));
     } catch {}
   }
+  try {
+    if (fs.existsSync(zipPath)) {
+      fs.unlinkSync(zipPath);
+    }
+  } catch {}
 };
