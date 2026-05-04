@@ -2616,7 +2616,9 @@ export default function CommunityConsole() {
       active: boolean;
       source?: string;
       socketId?: string;
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       debugLog("socket:onPtt", event);
       legacyLog(
         `[RX PTT] Received PTT event for channels ${event.channelIds.join(", ")}, active: ${event.active}, source: ${event.source}`,
@@ -2654,7 +2656,9 @@ export default function CommunityConsole() {
       source?: string;
       tones: TonePacket[];
       socketId?: string;
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       debugLog("socket:onTone", event);
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
@@ -2689,7 +2693,9 @@ export default function CommunityConsole() {
       active?: boolean;
       source?: string;
       socketId?: string;
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
       if (ids.length === 0) return;
       const normalizedIds = Array.from(
@@ -2714,7 +2720,9 @@ export default function CommunityConsole() {
 
     const onPanicCleared = (event: {
       channelIds?: string[];
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
       if (ids.length === 0) {
         setChannelPanicActive({});
@@ -2751,7 +2759,9 @@ export default function CommunityConsole() {
       busyChannelIds?: string[];
       active?: boolean;
       busyBy?: Array<{ channelId: string; source: string }>;
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       debugLog("socket:onPttStatus", event);
       const ids = event.channelIds ?? [];
       if (event.status === "granted") {
@@ -2824,7 +2834,9 @@ export default function CommunityConsole() {
       mimeType?: string;
       socketId?: string;
       originClientType?: string;
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       console.log(
         `[VOICE ORIGIN][dispatch][chunk] ${event?.originClientType ?? "unknown"}`,
       );
@@ -2865,7 +2877,9 @@ export default function CommunityConsole() {
       sampleRate?: number;
       socketId?: string;
       originClientType?: string;
+      serverId?: string;
     }) => {
+      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       console.log(
         `[VOICE ORIGIN][dispatch][frame] ${event?.originClientType ?? "unknown"}`,
       );
