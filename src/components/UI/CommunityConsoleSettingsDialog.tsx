@@ -93,6 +93,8 @@ type Props = {
   onTxStartAudioChange: (value: boolean) => void;
   onTxEndAudioChange: (value: boolean) => void;
   onEditModeChange: (value: boolean) => void;
+  showDebugButton?: boolean;
+  onOpenDebugWindow?: () => void;
   onSave: (next: {
     consoleSettings: ConsoleSettingsState;
     pttBindings: CommunityPttBindings;
@@ -110,6 +112,8 @@ export default function CommunityConsoleSettingsDialog({
   onTxStartAudioChange,
   onTxEndAudioChange,
   onEditModeChange,
+  showDebugButton = false,
+  onOpenDebugWindow,
   onSave,
 }: Props) {
   const [draft, setDraft] = useState<ConsoleSettingsState>(value);
@@ -257,6 +261,24 @@ export default function CommunityConsoleSettingsDialog({
             />
           </div>
         </div>
+
+        {showDebugButton ? (
+          <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
+            <div className="font-semibold">Developer Tools</div>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-sm text-[#BFBFBF]">
+                Open Dispatch debug window (dev builds only)
+              </span>
+              <button
+                type="button"
+                className="px-3 py-2 rounded-lg border bg-[#3C83F61A] border-[#3C83F61A] text-[#3C83F6] cursor-pointer"
+                onClick={onOpenDebugWindow}
+              >
+                Open Debug Window
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="p-3 rounded-lg bg-[#0B1220] border border-white/10">
           <div className="font-semibold flex items-center gap-2">
