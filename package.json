@@ -20,7 +20,7 @@
   "homepage": "./dist",
   "license": "MIT",
   "build": {
-    "forceCodeSigning": true,
+    "forceCodeSigning": false,
     "afterSign": "scripts/notarize.cjs",
     "publish": [
       {
