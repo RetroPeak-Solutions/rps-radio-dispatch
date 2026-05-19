@@ -503,6 +503,7 @@ export default function CommunityConsole() {
     [],
   );
   const incomingVoicePlayingRef = useRef(false);
+  const rxVoiceResetTimersRef = useRef<Record<string, number>>({});
   const hotCuePendingRef = useRef(false);
   const seenVoiceFrameEventRef = useRef(false);
   const dispatchSessionIdRef = useRef("");
@@ -1138,8 +1139,16 @@ export default function CommunityConsole() {
     channelIds: string[],
   ) => {
     console.log('[VoiceFrame] Incoming Voice Frame:', frameBase64);
-    const listened = channelIds.filter((id) => channelListening[id]);
-    if (listened.length === 0) return;
+    const normalized = Array.from(
+      new Set((channelIds ?? []).map((id) => normalizeToZoneChannelId(id))),
+    );
+    const effectiveChannelIds =
+      normalized.length > 0
+        ? normalized
+        : Object.entries(channelListening)
+          .filter(([, listening]) => listening)
+          .map(([id]) => id);
+    if (effectiveChannelIds.length === 0) return;
     const out = await ensureRxFrameOutputReady();
     if (!out) return;
     const { ctx, destination } = out;
@@ -1153,7 +1162,7 @@ export default function CommunityConsole() {
     }
 
     const gainNode = ctx!.createGain();
-    const perChannel = listened.map((id) => {
+    const perChannel = effectiveChannelIds.map((id) => {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
@@ -1271,12 +1280,20 @@ export default function CommunityConsole() {
     mimeType: string,
     channelIds: string[],
   ) => {
-    const listened = channelIds.filter((id) => channelListening[id]);
-    if (listened.length === 0) {
-      legacyLog("[RX Voice] No listened channels for this chunk");
+    const normalized = Array.from(
+      new Set((channelIds ?? []).map((id) => normalizeToZoneChannelId(id))),
+    );
+    const effectiveChannelIds =
+      normalized.length > 0
+        ? normalized
+        : Object.entries(channelListening)
+          .filter(([, listening]) => listening)
+          .map(([id]) => id);
+    if (effectiveChannelIds.length === 0) {
+      legacyLog("[RX Voice] No effective channels for this chunk");
       return;
     }
-    const perChannelVolumes = listened.map((id) => {
+    const perChannelVolumes = effectiveChannelIds.map((id) => {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
@@ -1308,23 +1325,22 @@ export default function CommunityConsole() {
       return;
     }
 
-    const activeRxChannels = Object.entries(channelReceiving)
-      .filter(([id, active]) => active && channelListening[id])
-      .map(([id]) => id);
-
-    const listened = txChannels.filter((id) => channelListening[id]);
+    const normalizedTxChannels = Array.from(
+      new Set(txChannels.map((id) => normalizeToZoneChannelId(id))),
+    );
+    const listened = normalizedTxChannels.filter((id) => channelListening[id]);
     const channelsForGain =
       listened.length > 0
         ? listened
-        : txChannels.length > 0
+        : normalizedTxChannels.length > 0
+          ? normalizedTxChannels
+          : txChannels.length > 0
           ? Object.entries(channelListening)
             .filter(([, on]) => on)
             .map(([id]) => id)
-          : activeRxChannels.length > 0
-            ? activeRxChannels
-            : Object.entries(channelListening)
-              .filter(([, on]) => on)
-              .map(([id]) => id);
+          : Object.entries(channelListening)
+            .filter(([, on]) => on)
+            .map(([id]) => id);
 
     if (channelsForGain.length === 0) {
       if (pipeline) {
@@ -1335,7 +1351,7 @@ export default function CommunityConsole() {
       voiceDebug("apply-gain:muted-no-listened", {
         remoteSocketId,
         txChannels,
-        activeRxChannels,
+        normalizedTxChannels,
       });
       return;
     }
@@ -1356,7 +1372,7 @@ export default function CommunityConsole() {
       listened: channelsForGain,
       volume,
     });
-  }, [channelListening, channelReceiving, volumes]);
+  }, [channelListening, volumes]);
 
   const ensureWebRtcPeer = useCallback(async (targetSocketId: string) => {
     debugLog("ensureWebRtcPeer:start", {
@@ -2478,6 +2494,25 @@ export default function CommunityConsole() {
         socketId: socket.id,
         channelIds: listenedChannelIds,
       });
+      // Force-sync listen rooms on join so persisted listening states are always
+      // reflected server-side even if the user did not toggle channels this session.
+      Object.entries(channelListening).forEach(([channelId, listening]) => {
+        socket.emit("dispatch:listen", {
+          communityId,
+          serverId: selectedServerId,
+          channelId,
+          listening: !!listening,
+        });
+        const radioChannelId = radioChannelIdByZoneChannelId[channelId];
+        if (radioChannelId) {
+          socket.emit("dispatch:listen", {
+            communityId,
+            serverId: selectedServerId,
+            channelId: radioChannelId,
+            listening: !!listening,
+          });
+        }
+      });
     }
 
     const onDispatchUser = (event: {
@@ -2522,6 +2557,33 @@ export default function CommunityConsole() {
           })),
         );
       }
+    };
+
+    const markRxFromVoice = (channelIds: string[], source?: string) => {
+      const normalizedIds = Array.from(
+        new Set((channelIds ?? []).map((id) => normalizeToZoneChannelId(id))),
+      ).filter(Boolean);
+      if (normalizedIds.length === 0) return;
+
+      setChannelsState(normalizedIds, "rx", true);
+      if (source) {
+        setChannelLastSrc((prev) => {
+          const next = { ...prev };
+          normalizedIds.forEach((id) => {
+            next[id] = source;
+          });
+          return next;
+        });
+      }
+
+      normalizedIds.forEach((id) => {
+        const existing = rxVoiceResetTimersRef.current[id];
+        if (existing) window.clearTimeout(existing);
+        rxVoiceResetTimersRef.current[id] = window.setTimeout(() => {
+          setChannelsState([id], "rx", false);
+          delete rxVoiceResetTimersRef.current[id];
+        }, 350);
+      });
     };
 
     const onDispatchBan = (event: {
@@ -2618,7 +2680,7 @@ export default function CommunityConsole() {
       socketId?: string;
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       debugLog("socket:onPtt", event);
       legacyLog(
         `[RX PTT] Received PTT event for channels ${event.channelIds.join(", ")}, active: ${event.active}, source: ${event.source}`,
@@ -2629,6 +2691,14 @@ export default function CommunityConsole() {
       const normalizedIds = Array.from(
         new Set(ids.map((id) => normalizeToZoneChannelId(id))),
       );
+      const isSelfSocketEvent = Boolean(
+        event.socketId && event.socketId === socket.id,
+      );
+      const isLikelySelfLocalTxEvent =
+        localPttActive &&
+        event.active &&
+        !!event.source &&
+        String(event.source) === String(dispatchSource);
 
       if (event.socketId && event.socketId !== socket.id) {
         const existing = remoteTxChannelsRef.current[event.socketId] ?? [];
@@ -2639,6 +2709,17 @@ export default function CommunityConsole() {
           remoteTxChannelsRef.current[event.socketId] = remaining;
         }
         applyWebRtcAudioForSocket(event.socketId);
+      }
+
+      if (isSelfSocketEvent || isLikelySelfLocalTxEvent) {
+        setChannelLastSrc((prev) => {
+          const next = { ...prev };
+          normalizedIds.forEach((id) => {
+            next[id] = event.source || dispatchSource;
+          });
+          return next;
+        });
+        return;
       }
 
       setChannelsState(normalizedIds, "rx", event.active);
@@ -2658,7 +2739,7 @@ export default function CommunityConsole() {
       socketId?: string;
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       debugLog("socket:onTone", event);
       const ids = event.channelIds ?? [];
       if (ids.length === 0) return;
@@ -2695,7 +2776,7 @@ export default function CommunityConsole() {
       socketId?: string;
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
       if (ids.length === 0) return;
       const normalizedIds = Array.from(
@@ -2722,7 +2803,7 @@ export default function CommunityConsole() {
       channelIds?: string[];
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       const ids = Array.isArray(event?.channelIds) ? event.channelIds : [];
       if (ids.length === 0) {
         setChannelPanicActive({});
@@ -2761,7 +2842,7 @@ export default function CommunityConsole() {
       busyBy?: Array<{ channelId: string; source: string }>;
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       debugLog("socket:onPttStatus", event);
       const ids = event.channelIds ?? [];
       if (event.status === "granted") {
@@ -2836,7 +2917,7 @@ export default function CommunityConsole() {
       originClientType?: string;
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       console.log(
         `[VOICE ORIGIN][dispatch][chunk] ${event?.originClientType ?? "unknown"}`,
       );
@@ -2856,10 +2937,8 @@ export default function CommunityConsole() {
       const normalizedChannelIds = Array.from(
         new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
       );
-      const routedChannelIds =
-        normalizedChannelIds.length > 0
-          ? normalizedChannelIds.filter((id) => channelListening[id])
-          : [];
+      markRxFromVoice(normalizedChannelIds, event.source);
+      const routedChannelIds = normalizedChannelIds;
       const playbackChannels =
         routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
       legacyLog("[RX Voice] Event channels:", normalizedChannelIds);
@@ -2879,7 +2958,7 @@ export default function CommunityConsole() {
       originClientType?: string;
       serverId?: string;
     }) => {
-      if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
+      // if (event?.serverId && selectedServerId && String(event.serverId) !== String(selectedServerId)) return;
       console.log(
         `[VOICE ORIGIN][dispatch][frame] ${event?.originClientType ?? "unknown"}`,
       );
@@ -2898,10 +2977,8 @@ export default function CommunityConsole() {
       const normalizedChannelIds = Array.from(
         new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
       );
-      const routedChannelIds =
-        normalizedChannelIds.length > 0
-          ? normalizedChannelIds.filter((id) => channelListening[id])
-          : [];
+      markRxFromVoice(normalizedChannelIds, event.source);
+      const routedChannelIds = normalizedChannelIds;
       const playbackChannels =
         routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
       void playIncomingVoiceFrame(
@@ -2924,6 +3001,9 @@ export default function CommunityConsole() {
     socket.on("dispatch:ptt-status", onPttStatus);
     socket.on("dispatch:voice", onVoice);
     socket.on("dispatch:voice-frame", onVoiceFrame);
+    socket.on("dispatch:ptt:relay", onPtt);
+    socket.on("dispatch:voice:relay", onVoice);
+    socket.on("dispatch:voice-frame:relay", onVoiceFrame);
 
     // Legacy `dispatch:peer-id` handler removed; discovery now uses existing events
 
@@ -2932,6 +3012,10 @@ export default function CommunityConsole() {
         communityId,
         socketId: socket?.id,
       });
+      Object.values(rxVoiceResetTimersRef.current).forEach((timerId) =>
+        window.clearTimeout(timerId),
+      );
+      rxVoiceResetTimersRef.current = {};
       stopVoiceCapture();
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:user", onDispatchUser);
@@ -2946,9 +3030,33 @@ export default function CommunityConsole() {
       socket.off("dispatch:ptt-status", onPttStatus);
       socket.off("dispatch:voice", onVoice);
       socket.off("dispatch:voice-frame", onVoiceFrame);
+      socket.off("dispatch:ptt:relay", onPtt);
+      socket.off("dispatch:voice:relay", onVoice);
+      socket.off("dispatch:voice-frame:relay", onVoiceFrame);
       socket.emit("dispatch:leave", { communityId, serverId: selectedServerId });
     };
   }, [socket, communityId, channelListening, volumes, allZoneChannelIds, zoneChannelIdByRadioChannelId, radioChannelIdByZoneChannelId, consoleSettings.inputDeviceId, consoleSettings.outputDeviceId, listenedChannelIds, applyWebRtcAudioForSocket, sessionUserId, deviceInfo, deviceInfo?.deviceId, deviceInfo?.serialNumber, banState]);
+
+  useEffect(() => {
+    if (!socket || !communityId || !selectedServerId) return;
+    Object.entries(channelListening).forEach(([channelId, listening]) => {
+      socket.emit("dispatch:listen", {
+        communityId,
+        serverId: selectedServerId,
+        channelId,
+        listening: !!listening,
+      });
+      const radioChannelId = radioChannelIdByZoneChannelId[channelId];
+      if (radioChannelId) {
+        socket.emit("dispatch:listen", {
+          communityId,
+          serverId: selectedServerId,
+          channelId: radioChannelId,
+          listening: !!listening,
+        });
+      }
+    });
+  }, [socket, communityId, selectedServerId, channelListening, radioChannelIdByZoneChannelId]);
 
   useEffect(() => {
     if (!socket || !communityId || !socket.id) return;
@@ -3291,12 +3399,20 @@ export default function CommunityConsole() {
   ) => {
     if (!Array.isArray(channelIds)) return;
 
-    const listened = channelIds.filter((id) => channelListening[id]);
-    if (listened.length === 0) {
-      legacyLog("[RX Audio] No listened channels for this chunk");
+    const normalized = Array.from(
+      new Set((channelIds ?? []).map((id) => normalizeToZoneChannelId(id))),
+    );
+    const effectiveChannelIds =
+      normalized.length > 0
+        ? normalized
+        : Object.entries(channelListening)
+          .filter(([, listening]) => listening)
+          .map(([id]) => id);
+    if (effectiveChannelIds.length === 0) {
+      legacyLog("[RX Audio] No effective channels for this chunk");
       return;
     }
-    const perChannelVolumes = listened.map((id) => {
+    const perChannelVolumes = effectiveChannelIds.map((id) => {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
