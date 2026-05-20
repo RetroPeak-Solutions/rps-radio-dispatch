@@ -117,6 +117,8 @@ const LEGACY_LOG_DEBUG = false;
 const ENFORCE_REQUIRED_RADIO_VOCODER = true;
 const SAFE_RADIO_CHAIN = true;
 const USE_SERVER_VOICE_FRAMES = true;
+const RX_AUDIO_BOOST = 5.0;
+const RX_AUDIO_MIN_GAIN = 1.6;
 
 const EMPTY_SLOT = { id: "", key: [] as string[] };
 const DEFAULT_COMMUNITY_PTT_CHANNELS: CommunityPttChannels = {
@@ -504,6 +506,7 @@ export default function CommunityConsole() {
   );
   const incomingVoicePlayingRef = useRef(false);
   const rxVoiceResetTimersRef = useRef<Record<string, number>>({});
+  const seenVoiceFrameKeysRef = useRef<Map<string, number>>(new Map());
   const hotCuePendingRef = useRef(false);
   const seenVoiceFrameEventRef = useRef(false);
   const dispatchSessionIdRef = useRef("");
@@ -1166,7 +1169,13 @@ export default function CommunityConsole() {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
-    gainNode.gain.value = Math.max(...perChannel) / 100;
+    gainNode.gain.value = Math.min(
+      4.0,
+      Math.max(
+        RX_AUDIO_MIN_GAIN,
+        (Math.max(...perChannel) / 100) * RX_AUDIO_BOOST,
+      ),
+    );
 
     const source = ctx!.createBufferSource();
     source.buffer = buffer;
@@ -1297,7 +1306,10 @@ export default function CommunityConsole() {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
-    const volume = Math.max(...perChannelVolumes) / 100;
+    const volume = Math.min(
+      1,
+      (Math.max(...perChannelVolumes) / 100) * RX_AUDIO_BOOST,
+    );
     const blob = decodeBase64ToBlob(
       chunkBase64,
       mimeType || "audio/webm;codecs=opus",
@@ -1349,7 +1361,13 @@ export default function CommunityConsole() {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
-    const volume = Math.max(...perChannel) / 100;
+    const volume = Math.min(
+      3.0,
+      Math.max(
+        RX_AUDIO_MIN_GAIN,
+        (Math.max(...perChannel) / 100) * RX_AUDIO_BOOST,
+      ),
+    );
     if (pipeline) {
       pipeline.outputGain.gain.value = volume;
       pipeline.outputAudio.volume = 1;
@@ -2973,6 +2991,23 @@ export default function CommunityConsole() {
       )
         return;
       if (event.socketId && event.socketId === socket.id) return;
+      const frameKey = [
+        event.socketId || "unknown",
+        String(event.timestamp || ""),
+        String(event.sampleRate || ""),
+        String(event.frameBase64.length),
+      ].join("|");
+      const now = Date.now();
+      const lastSeen = seenVoiceFrameKeysRef.current.get(frameKey) ?? 0;
+      if (now - lastSeen < 2000) {
+        return;
+      }
+      seenVoiceFrameKeysRef.current.set(frameKey, now);
+      if (seenVoiceFrameKeysRef.current.size > 2000) {
+        for (const [key, ts] of seenVoiceFrameKeysRef.current.entries()) {
+          if (now - ts > 5000) seenVoiceFrameKeysRef.current.delete(key);
+        }
+      }
       seenVoiceFrameEventRef.current = true;
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
@@ -3022,6 +3057,7 @@ export default function CommunityConsole() {
         window.clearTimeout(timerId),
       );
       rxVoiceResetTimersRef.current = {};
+      seenVoiceFrameKeysRef.current.clear();
       stopVoiceCapture();
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:user", onDispatchUser);
@@ -3422,7 +3458,10 @@ export default function CommunityConsole() {
       const value = volumes[id] ?? 50;
       return Math.max(0, Math.min(100, value));
     });
-    const chunkVolume = Math.max(...perChannelVolumes) / 100;
+    const chunkVolume = Math.min(
+      1,
+      (Math.max(...perChannelVolumes) / 100) * RX_AUDIO_BOOST,
+    );
 
     legacyLog("[RX Audio] Received chunk -> queueing (size):", chunkBase64.length);
 
