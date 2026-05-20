@@ -1329,18 +1329,7 @@ export default function CommunityConsole() {
       new Set(txChannels.map((id) => normalizeToZoneChannelId(id))),
     );
     const listened = normalizedTxChannels.filter((id) => channelListening[id]);
-    const channelsForGain =
-      listened.length > 0
-        ? listened
-        : normalizedTxChannels.length > 0
-          ? normalizedTxChannels
-          : txChannels.length > 0
-          ? Object.entries(channelListening)
-            .filter(([, on]) => on)
-            .map(([id]) => id)
-          : Object.entries(channelListening)
-            .filter(([, on]) => on)
-            .map(([id]) => id);
+    const channelsForGain = listened;
 
     if (channelsForGain.length === 0) {
       if (pipeline) {
@@ -2691,6 +2680,7 @@ export default function CommunityConsole() {
       const normalizedIds = Array.from(
         new Set(ids.map((id) => normalizeToZoneChannelId(id))),
       );
+      const listenedIds = normalizedIds.filter((id) => isListeningChannelId(id));
       const isSelfSocketEvent = Boolean(
         event.socketId && event.socketId === socket.id,
       );
@@ -2714,7 +2704,7 @@ export default function CommunityConsole() {
       if (isSelfSocketEvent || isLikelySelfLocalTxEvent) {
         setChannelLastSrc((prev) => {
           const next = { ...prev };
-          normalizedIds.forEach((id) => {
+          listenedIds.forEach((id) => {
             next[id] = event.source || dispatchSource;
           });
           return next;
@@ -2722,10 +2712,11 @@ export default function CommunityConsole() {
         return;
       }
 
-      setChannelsState(normalizedIds, "rx", event.active);
+      if (listenedIds.length === 0) return;
+      setChannelsState(listenedIds, "rx", event.active);
       setChannelLastSrc((prev) => {
         const next = { ...prev };
-        normalizedIds.forEach((id) => {
+        listenedIds.forEach((id) => {
           next[id] = event.source || "Unknown";
         });
         return next;
@@ -2940,8 +2931,11 @@ export default function CommunityConsole() {
       const normalizedChannelIds = Array.from(
         new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
       );
-      markRxFromVoice(normalizedChannelIds, event.source);
-      const routedChannelIds = normalizedChannelIds;
+      const routedChannelIds = normalizedChannelIds.filter((id) =>
+        isListeningChannelId(id),
+      );
+      if (routedChannelIds.length === 0) return;
+      markRxFromVoice(routedChannelIds, event.source);
       const playbackChannels =
         routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
       legacyLog("[RX Voice] Event channels:", normalizedChannelIds);
@@ -2986,8 +2980,11 @@ export default function CommunityConsole() {
       const normalizedChannelIds = Array.from(
         new Set(event.channelIds.map((id) => normalizeToZoneChannelId(id))),
       );
-      markRxFromVoice(normalizedChannelIds, event.source);
-      const routedChannelIds = normalizedChannelIds;
+      const routedChannelIds = normalizedChannelIds.filter((id) =>
+        isListeningChannelId(id),
+      );
+      if (routedChannelIds.length === 0) return;
+      markRxFromVoice(routedChannelIds, event.source);
       const playbackChannels =
         routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
       void playIncomingVoiceFrame(
