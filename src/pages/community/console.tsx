@@ -2930,6 +2930,9 @@ export default function CommunityConsole() {
       });
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
+      // When frame-based RX is enabled, voice chunks are only a compatibility
+      // fallback and can cause duplicate/delayed playback if consumed too.
+      if (USE_SERVER_VOICE_FRAMES) return;
       legacyLog("[RX Voice] Received chunk, size:", event.chunkBase64.length);
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
