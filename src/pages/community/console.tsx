@@ -2943,11 +2943,17 @@ export default function CommunityConsole() {
         routedChannelIds.length > 0 ? routedChannelIds : listeningChannelIds;
       legacyLog("[RX Voice] Event channels:", normalizedChannelIds);
       legacyLog("[RX Voice] Routed channels:", playbackChannels);
-      playIncomingChunk(
-        event.chunkBase64,
-        event.mimeType || "audio/webm;codecs=opus",
-        playbackChannels,
-      );
+      const mimeType = event.mimeType || "audio/webm;codecs=opus";
+      const normalizedMime = String(mimeType).toLowerCase();
+      const isWebmOpus =
+        normalizedMime.includes("audio/webm") &&
+        normalizedMime.includes("opus");
+
+      if (isWebmOpus) {
+        playIncomingChunk(event.chunkBase64, mimeType, playbackChannels);
+      } else {
+        enqueueIncomingVoiceChunk(event.chunkBase64, mimeType, playbackChannels);
+      }
     };
 
     const onVoiceFrame = (event: {
