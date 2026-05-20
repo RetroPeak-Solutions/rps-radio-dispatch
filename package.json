@@ -10,11 +10,7 @@
   "displayName": "RetroRadio - Dispatch",
   "productName": "RetroRadio - Dispatch",
   "private": true,
-<<<<<<< HEAD
   "version": "1.2.7",
-=======
-  "version": "1.2.5",
->>>>>>> parent of 4ca5ba5 (Update package.json)
   "type": "module",
   "main": "electron/main.js",
   "homepage": "./dist",
