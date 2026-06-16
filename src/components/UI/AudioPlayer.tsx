@@ -5,6 +5,10 @@ type AudioPlayerProps = {
   src: string;
 };
 
+const RECORDING_PLAYBACK_GAIN = 3.0;
+const MIN_GAIN = 1;
+const MAX_GAIN = 8;
+
 function formatTime(totalSeconds: number) {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return "0:00";
   const mins = Math.floor(totalSeconds / 60);
@@ -14,10 +18,14 @@ function formatTime(totalSeconds: number) {
 
 export default function AudioPlayer({ src }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playbackGain, setPlaybackGain] = useState(RECORDING_PLAYBACK_GAIN);
 
   const canPlay = useMemo(() => src.trim().length > 0, [src]);
   const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
@@ -45,6 +53,7 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    audio.volume = 1;
 
     const syncDuration = () => {
       const next = Number.isFinite(audio.duration) ? audio.duration : 0;
@@ -77,6 +86,34 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
       audio.removeEventListener("play", onPlay);
     };
   }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const AudioCtx =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      if (!sourceNodeRef.current) {
+        sourceNodeRef.current = audioCtxRef.current.createMediaElementSource(audio);
+      }
+      if (!gainNodeRef.current) {
+        gainNodeRef.current = audioCtxRef.current.createGain();
+      }
+      gainNodeRef.current.gain.value = playbackGain;
+      sourceNodeRef.current.connect(gainNodeRef.current);
+      gainNodeRef.current.connect(audioCtxRef.current.destination);
+    } catch {
+      // Fallback to default element playback when WebAudio node setup is unavailable.
+    }
+  }, [playbackGain]);
+
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = playbackGain;
+    }
+  }, [playbackGain]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -144,6 +181,28 @@ export default function AudioPlayer({ src }: AudioPlayerProps) {
         </div>
         <span className="w-10 text-right text-[10px] text-gray-400">
           {formatTime(safeDuration)}
+        </span>
+      </div>
+      <div className="flex w-40 items-center gap-2 self-center px-1">
+        <span className="text-[10px] text-gray-400">VOL</span>
+        <input
+          type="range"
+          min={MIN_GAIN}
+          max={MAX_GAIN}
+          step={0.1}
+          value={playbackGain}
+          onChange={(event) => {
+            const next = Number(event.target.value);
+            setPlaybackGain(
+              Number.isFinite(next)
+                ? Math.max(MIN_GAIN, Math.min(MAX_GAIN, next))
+                : RECORDING_PLAYBACK_GAIN,
+            );
+          }}
+          className="h-1.5 w-full cursor-pointer accent-[#3C83F6]"
+        />
+        <span className="w-8 text-right text-[10px] text-gray-300">
+          {playbackGain.toFixed(1)}x
         </span>
       </div>
     </div>

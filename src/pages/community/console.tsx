@@ -507,6 +507,7 @@ export default function CommunityConsole() {
   const incomingVoicePlayingRef = useRef(false);
   const rxVoiceResetTimersRef = useRef<Record<string, number>>({});
   const seenVoiceFrameKeysRef = useRef<Map<string, number>>(new Map());
+  const lastVoiceFrameAtBySocketRef = useRef<Record<string, number>>({});
   const hotCuePendingRef = useRef(false);
   const seenVoiceFrameEventRef = useRef(false);
   const dispatchSessionIdRef = useRef("");
@@ -2939,9 +2940,10 @@ export default function CommunityConsole() {
       });
       if (!event?.chunkBase64 || !Array.isArray(event.channelIds)) return;
       if (event.socketId && event.socketId === socket.id) return;
-      // When frame-based RX is enabled, voice chunks are only a compatibility
-      // fallback and can cause duplicate/delayed playback if consumed too.
-      if (USE_SERVER_VOICE_FRAMES) return;
+      const senderKey = event.socketId || event.source || "unknown";
+      const recentFrameAt = lastVoiceFrameAtBySocketRef.current[senderKey] ?? 0;
+      const hasRecentFrame = Date.now() - recentFrameAt < 1000;
+      if (USE_SERVER_VOICE_FRAMES && hasRecentFrame) return;
       legacyLog("[RX Voice] Received chunk, size:", event.chunkBase64.length);
       const listeningChannelIds = Object.entries(channelListening)
         .filter(([, listening]) => listening)
@@ -2991,6 +2993,8 @@ export default function CommunityConsole() {
       )
         return;
       if (event.socketId && event.socketId === socket.id) return;
+      const senderKey = event.socketId || event.source || "unknown";
+      lastVoiceFrameAtBySocketRef.current[senderKey] = Date.now();
       const frameKey = [
         event.socketId || "unknown",
         String(event.timestamp || ""),
@@ -3058,6 +3062,7 @@ export default function CommunityConsole() {
       );
       rxVoiceResetTimersRef.current = {};
       seenVoiceFrameKeysRef.current.clear();
+      lastVoiceFrameAtBySocketRef.current = {};
       stopVoiceCapture();
       socket.off("dispatch:ptt", onPtt);
       socket.off("dispatch:user", onDispatchUser);
