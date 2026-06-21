@@ -48,6 +48,7 @@ type CommunityData = {
     label: string;
     ip: string;
     port: string;
+    accessToken?: string | undefined;
   }>;
   members?: Array<{
     userId: string;
@@ -57,6 +58,20 @@ type CommunityData = {
   radioChannels: RadioChannel[];
   tones: QuickCall2ToneSet[];
 };
+
+export interface Vector3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface StationConfig {
+  customdata: Record<string, any> | null;
+  doors: string[];
+  group: string | null;
+  name: string;
+  position: Vector3;
+}
 
 type AppSettings = Awaited<ReturnType<typeof window.api.settings.get>>;
 
@@ -244,6 +259,7 @@ import AudioIcon from "@assets/imgs/audio.png";
 import ClearEmerg from "@assets/imgs/clearemerg.png";
 import HoldIcon from "@assets/imgs/channelmarker.png";
 import PTT from "@assets/imgs/pttselect.png";
+import { useInfernoApi } from "@root/src/hooks/useInfernoApi";
 
 const AUDIO_SFX = {
   talkActive: TalkActiveSfx,
@@ -3896,6 +3912,133 @@ export default function CommunityConsole() {
     };
   }, []);
 
+  const [showStationAccess, setShowStationAccess] = useState(false);
+  const [stationAccessData, setStationAccessData] = useState<any>(null);
+  const [stationAccessLoading, setStationAccessLoading] = useState(false);
+
+  const [selectedStation, setSelectedStation] = useState<StationConfig | null>(null);
+
+  const toggleStationAccess = () => {
+    setShowStationAccess((prev) => !prev);
+  }
+
+  const { request: infernoReq, loading, error } = useInfernoApi(selectedServer);
+
+
+
+  const openAllDoors = async () => {
+    if (!selectedStation) return;
+
+    const payload = {
+      open: {
+        [selectedStation.name]: [],
+      },
+    };
+
+    await infernoReq("doors", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    setStationDoors((prev) =>
+      prev.map((d) => ({ ...d, isOpen: true }))
+    );
+  };
+
+  const closeAllDoors = async () => {
+    if (!selectedStation) return;
+
+    const payload = {
+      close: {
+        [selectedStation.name]: [],
+      },
+    };
+
+    await infernoReq("doors", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+
+    setStationDoors((prev) =>
+      prev.map((d) => ({ ...d, isOpen: false }))
+    );
+  };
+
+  const fetchStationAccess = async () => {
+    try {
+      setStationAccessLoading(true);
+      const stations = await infernoReq("locations");
+      setStationAccessData(stations);
+      // Handle the fetched station access data
+    } catch (error) {
+      toast("An error occurred while fetching station access data.", { type: "error" });
+      console.error("Error fetching station access:", error);
+    } finally {
+      setStationAccessLoading(false);
+    }
+  };
+
+  const [stationDoors, setStationDoors] = useState<any[]>([]);
+  const [doorsLoading, setDoorsLoading] = useState(false);
+
+  const fetchStationDoors = async (stationName: string) => {
+    try {
+      setDoorsLoading(true);
+
+      const doors = await infernoReq(
+        `doors/${stationName}`
+      );
+
+      setStationDoors(doors);
+    } catch (error) {
+      toast("Failed to load station doors.", { type: "error" });
+      console.error("Error fetching doors:", error);
+      setStationDoors([]);
+    } finally {
+      setDoorsLoading(false);
+    }
+  };
+
+  const toggleDoor = async (doorName: string, isOpen: boolean) => {
+    if (!selectedStation) return;
+
+    const stationName = selectedStation.name;
+
+    // build payload for API
+    const payload = {
+      [isOpen ? "close" : "open"]: {
+        [stationName]: [doorName], // single door toggle
+      },
+    };
+
+    try {
+      // optimistic update first
+      setStationDoors((prev) =>
+        prev.map((door) =>
+          door.name === doorName
+            ? { ...door, isOpen: !isOpen }
+            : door
+        )
+      );
+
+      await infernoReq("doors", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    } catch (error) {
+      console.error("Failed to toggle door:", error);
+
+      // rollback if fail
+      setStationDoors((prev) =>
+        prev.map((door) =>
+          door.name === doorName
+            ? { ...door, isOpen }
+            : door
+        )
+      );
+    }
+  };
+
   if (banState) {
     return (
       <div className="min-h-screen bg-[#0B1220] text-white font-mono flex items-center justify-center p-6">
@@ -4104,6 +4247,7 @@ export default function CommunityConsole() {
             >
               <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
             </button>
+
             {/* <button
               id="panic-test-btn"
               data-interactive="true"
@@ -4156,6 +4300,22 @@ export default function CommunityConsole() {
             >
               Call Hist
             </button>
+
+            <button
+              id="station-access-btn"
+              data-interactive="true"
+              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleStationAccess();
+                void fetchStationAccess();
+                // setCallHistoryOpen(true);
+                // void fetchCallHistory();
+              }}
+            >
+              Station Access
+            </button>
             </div>
           </div>
         </div>
@@ -4165,7 +4325,7 @@ export default function CommunityConsole() {
           selectedIndex={activeZoneIndex}
           onChange={setActiveZoneIndex}
         >
-          <Tab.List className="z-10 fixed top-[120px] w-full flex bg-[#0C1524] border-b border-gray-700">
+          <Tab.List className="z-10 fixed top-30 w-full flex bg-[#0C1524] border-b border-gray-700">
             {sortedZones.map((zone) => (
               <Tab
                 key={zone.id}
@@ -4518,9 +4678,132 @@ export default function CommunityConsole() {
       </div>
 
       <AnimatePresence>
+        {showStationAccess && (
+          <motion.div
+            className="fixed inset-0 z-1200 bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => toggleStationAccess()}
+          >
+            <motion.div
+              className="w-full max-w-4xl max-h-[80vh] overflow-hidden rounded-lg border border-[#2A3145] bg-[#111827] shadow-[0_0_24px_rgba(0,0,0,0.5)]"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-[#2A3145] px-4 py-3">
+                <div className="flex items-center gap-2 text-[#BFD8FF]">
+                  {/* <History size={16} /> */}
+                  <h2 className="text-base font-semibold select-none">Inferno Station Alert | Stations Access</h2>
+                </div>
+                <div className="flex items-center gap-2 select-none">
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] px-3 py-1.5 text-xs text-[#BFD8FF] hover:bg-[#253047]"
+                    onClick={() => void fetchStationAccess()}
+                    disabled={stationAccessLoading}
+                  >
+                    Refresh Stations
+                  </button>
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] p-1.5 text-[#BFD8FF] hover:bg-[#253047]"
+                    onClick={() => toggleStationAccess()}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+             <div className="flex h-[calc(80vh-60px)] gap-4 overflow-hidden p-3">
+                {/* Stations List */}
+                <div className="flex w-80 shrink-0 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
+                  <div className="border-b border-[#2A3145] p-4">
+                    <h3 className="text-lg font-semibold text-[#BFD8FF] select-none">
+                      Stations
+                    </h3>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {stationAccessData?.map((station: StationConfig) => (
+                      <div
+                        key={station.name}
+                        onClick={() => {
+                          if (selectedStation?.name === station.name) return;
+                          setSelectedStation(station);
+                          fetchStationDoors(station.name);
+                        }}
+                        className={`mb-2 cursor-pointer rounded-lg border p-3 ${
+                          selectedStation?.name === station.name
+                            ? "border-blue-500 bg-blue-500/10"
+                            : "border-[#2A3145] bg-[#1A2030]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm text-white select-none">{station.name}</p>
+
+                          {selectedStation?.name === station.name && (
+                            <span className="text-xs text-blue-400 select-none">
+                              Selected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Selected Station */}
+                <div className="space-y-3">
+                  {stationDoors?.map((door: any, index: number) => (
+                    <div
+                      key={index}
+                      className="rounded-lg border border-[#2A3145] bg-[#1A2030] p-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-white">
+                          Door #{index + 1}
+                        </p>
+
+                        <span
+                          className={`rounded px-2 py-1 text-xs font-medium ${
+                            door.isOpen
+                              ? "bg-green-500/20 text-green-400"
+                              : "bg-red-500/20 text-red-400"
+                          }`}
+                        >
+                          {door.isOpen ? "OPEN" : "CLOSED"}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between">
+                        <p className="text-xs text-[#94A3B8]">
+                          {door.name ?? "No name"}
+                        </p>
+
+                        <button
+                          onClick={() => toggleDoor(door.name, door.isOpen)}
+                          className={`rounded px-3 py-1 text-xs font-medium transition ${
+                            door.isOpen
+                              ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                              : "bg-green-500/20 text-green-300 hover:bg-green-500/30"
+                          }`}
+                        >
+                          {door.isOpen ? "Close Door" : "Open Door"}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {callHistoryOpen && (
           <motion.div
-            className="fixed inset-0 z-[1200] bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
+            className="fixed inset-0 z-1200 bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
