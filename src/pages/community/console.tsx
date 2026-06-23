@@ -5005,14 +5005,14 @@ export default function CommunityConsole() {
                             onClick={openAllDoors}
                             className="rounded-md border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-xs text-green-400 hover:bg-green-500/20"
                           >
-                            Open All
+                            Open All Doors
                           </button>
 
                           <button
                             onClick={closeAllDoors}
                             className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
                           >
-                            Close All
+                            Close All Doors
                           </button>
                         </div>
                       )}
@@ -5045,7 +5045,7 @@ export default function CommunityConsole() {
                           </p>
                         </div>
                       ) : stationDoors.length > 0 ? (
-                        stationDoors.map((door: any) => (
+                        stationDoors.map((door: any, index: number) => (
                           <div
                             key={door.name}
                             className="mb-2 rounded-lg border border-[#2A3145] bg-[#1A2030] p-3"
@@ -5053,19 +5053,28 @@ export default function CommunityConsole() {
                             <div className="flex items-center justify-between">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="truncate text-sm text-white">
-                                    {door.name}
-                                  </p>
-
-                                  <span
-                                    className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                                      door.state === "open"
-                                        ? "bg-green-500/20 text-green-400"
-                                        : "bg-red-500/20 text-red-400"
-                                    }`}
-                                  >
-                                    {door.state.toUpperCase()}
-                                  </span>
+                                  <div className="flex flex-col gap-2 items-start">
+                                    <small className="text-xs text-[#64748B]">
+                                      Door: #{index + 1}
+                                    </small>
+                                    <div className="flex flex-row gap-2 items-center">
+                                      <div className="flex flex-row">
+                                        <div className="h-2 w-2 rounded-full bg-[#3C83F6] justify-center align-middle mt-1.5 mr-2" />
+                                        <p className="truncate text-sm text-white select-none">
+                                          {door.name}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                                          door.state === "open"
+                                            ? "bg-green-500/20 text-green-400"
+                                            : "bg-red-500/20 text-red-400"
+                                        }`}
+                                      >
+                                        {door.state.toUpperCase()}
+                                      </span>
+                                    </div>
+                                  </div>
 
                                   {door.isolated && (
                                     <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
@@ -5088,6 +5097,7 @@ export default function CommunityConsole() {
                                 </button>
 
                                 <button
+                                  hidden
                                   onClick={() => {
                                     setSelectedDoor(door);
                                     setNewDoorName(door.name);
