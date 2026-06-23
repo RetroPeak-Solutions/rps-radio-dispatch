@@ -4188,7 +4188,7 @@ export default function CommunityConsole() {
   };
 
   const openAllDoors = async () => {
-  if (!selectedStation) return;
+    if (!selectedStation) return;
 
     const payload = {
       open: {
@@ -4221,10 +4221,10 @@ export default function CommunityConsole() {
     const payload = {
       close: {
         [selectedStation.name!]: [],
-      }
-    }
+      },
+    };
 
-     // optimistic UI update
+    // optimistic UI update
     setStationDoors((prev) =>
       prev.map((d) => ({
         ...d,
@@ -4275,8 +4275,6 @@ export default function CommunityConsole() {
       await fetchStationDoors(selectedStation.name);
     }
   };
-
-  
 
   if (banState) {
     return (
@@ -4944,11 +4942,12 @@ export default function CommunityConsole() {
                   </button>
                 </div>
               </div>
+
               <div className="flex h-[calc(80vh-60px)] gap-4 overflow-hidden p-3">
                 {/* Stations List */}
                 <div className="flex w-80 shrink-0 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
                   <div className="border-b border-[#2A3145] p-4">
-                    <h3 className="text-lg font-semibold text-[#BFD8FF] select-none">
+                    <h3 className="select-none text-lg font-semibold text-[#BFD8FF]">
                       Stations
                     </h3>
                   </div>
@@ -4959,6 +4958,7 @@ export default function CommunityConsole() {
                         key={station.name}
                         onClick={() => {
                           if (selectedStation?.name === station.name) return;
+
                           setSelectedStation(station);
                           fetchStationDoors(station.name);
                         }}
@@ -4969,12 +4969,12 @@ export default function CommunityConsole() {
                         }`}
                       >
                         <div className="flex items-center justify-between">
-                          <p className="text-sm text-white select-none">
+                          <p className="select-none text-sm text-white">
                             {station.name}
                           </p>
 
                           {selectedStation?.name === station.name && (
-                            <span className="text-xs text-blue-400 select-none">
+                            <span className="select-none text-xs text-blue-400">
                               Selected
                             </span>
                           )}
@@ -4984,33 +4984,33 @@ export default function CommunityConsole() {
                   </div>
                 </div>
 
-                {/* Station Controls */}
-                <div className="flex flex-col">
-                  {/* Doors List */}
-                  <div className="flex flex-1 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
-                    <div className="flex items-center justify-between border-b border-[#2A3145] p-4">
+                {/* Right Side */}
+                <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+                  {/* Controls Block */}
+                  <div className="shrink-0 rounded-lg border border-[#2A3145] bg-[#151A26]">
+                    <div className="flex items-center justify-between flex-1 border-b border-[#2A3145] p-3">
                       <div>
-                        <h3 className="text-lg font-semibold text-[#BFD8FF] select-none">
-                          Doors
+                        <h3 className="select-none text-lg font-semibold text-[#BFD8FF]">
+                          Station Controls
                         </h3>
 
-                        <p className="text-xs text-[#64748B] select-none">
-                          {selectedStation?.name ?? "No Station Selected"}
+                        <p className="text-xs text-[#64748B]">
+                          {selectedStation?.name ?? "No station selected"}
                         </p>
                       </div>
 
                       {selectedStation && (
                         <div className="flex gap-2">
                           <button
-                            onClick={() => openAllDoors()}
-                            className="inline-flex items-center justify-center rounded-md border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-xs text-green-400 hover:bg-green-500/20"
+                            onClick={openAllDoors}
+                            className="rounded-md border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-xs text-green-400 hover:bg-green-500/20"
                           >
                             Open All
                           </button>
 
                           <button
-                            onClick={() => closeAllDoors()}
-                            className="inline-flex items-center justify-center rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
+                            onClick={closeAllDoors}
+                            className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
                           >
                             Close All
                           </button>
@@ -5018,7 +5018,26 @@ export default function CommunityConsole() {
                       )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3">
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                      Coming Soon: Additional station controls and features will be available here.
+                    </div>
+                  </div>
+
+                  {/* Doors List */}
+                  <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
+                    <div className="shrink-0 border-b border-[#2A3145] p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="select-none text-lg font-semibold text-[#BFD8FF]">
+                          Doors
+                        </h3>
+
+                        <span className="select-none text-xs text-[#64748B]">
+                          {stationDoors.length} Doors
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
                       {doorsLoading ? (
                         <div className="flex h-full items-center justify-center">
                           <p className="text-sm text-[#94A3B8]">
@@ -5034,7 +5053,7 @@ export default function CommunityConsole() {
                             <div className="flex items-center justify-between">
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
-                                  <p className="truncate text-sm text-white select-none">
+                                  <p className="truncate text-sm text-white">
                                     {door.name}
                                   </p>
 
@@ -5058,18 +5077,14 @@ export default function CommunityConsole() {
 
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() =>
-                                    toggleDoor(door)
-                                  }
-                                  className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-xs ${
+                                  onClick={() => toggleDoor(door)}
+                                  className={`rounded-md px-2 py-1 text-xs ${
                                     door.state === "open"
                                       ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
                                       : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
                                   }`}
                                 >
-                                  {door.state === "open"
-                                    ? "Close"
-                                    : "Open"}
+                                  {door.state === "open" ? "Close" : "Open"}
                                 </button>
 
                                 <button
@@ -5078,7 +5093,7 @@ export default function CommunityConsole() {
                                     setNewDoorName(door.name);
                                     setRenameDoorModal(true);
                                   }}
-                                  className="inline-flex items-center justify-center rounded-md bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                  className="rounded-md bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
                                 >
                                   Rename
                                 </button>
@@ -5088,7 +5103,7 @@ export default function CommunityConsole() {
                         ))
                       ) : (
                         <div className="flex h-full items-center justify-center">
-                          <p className="text-sm text-[#94A3B8] select-none">
+                          <p className="text-sm text-[#94A3B8]">
                             {selectedStation
                               ? "No doors available for this station."
                               : "Select a station to view doors."}
@@ -5098,7 +5113,6 @@ export default function CommunityConsole() {
                     </div>
                   </div>
                 </div>
-
               </div>
             </motion.div>
           </motion.div>

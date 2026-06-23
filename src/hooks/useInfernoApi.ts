@@ -32,14 +32,12 @@ export const useInfernoApi = (selectedServer: any) => {
         setLoading(true);
         setError(null);
 
-        console.log("Inferno Token:", selectedServer?.infernoToken);
-
         const response = await fetch(`${baseUrl()}/${action}`, {
           method: options.method || "GET",
           headers: {
             "Content-Type": "application/json",
             Authorization:
-              selectedServer?.infernoToken,
+              selectedServer?.infernoSecret,
             ...options.headers,
           },
           body: options.body ? JSON.stringify(options.body) : undefined,
