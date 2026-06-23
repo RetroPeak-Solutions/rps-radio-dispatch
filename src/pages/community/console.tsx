@@ -48,7 +48,7 @@ type CommunityData = {
     label: string;
     ip: string;
     port: string;
-    accessToken?: string | undefined;
+    infernoSecret?: string | undefined;
   }>;
   members?: Array<{
     userId: string;
@@ -4984,117 +4984,121 @@ export default function CommunityConsole() {
                   </div>
                 </div>
 
-                {/* Doors List */}
-              <div className="flex flex-1 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
-                <div className="flex items-center justify-between border-b border-[#2A3145] p-4">
-                  <div>
-                    <h3 className="text-lg font-semibold text-[#BFD8FF] select-none">
-                      Doors
-                    </h3>
+                {/* Station Controls */}
+                <div className="flex flex-col">
+                  {/* Doors List */}
+                  <div className="flex flex-1 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
+                    <div className="flex items-center justify-between border-b border-[#2A3145] p-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-[#BFD8FF] select-none">
+                          Doors
+                        </h3>
 
-                    <p className="text-xs text-[#64748B] select-none">
-                      {selectedStation?.name ?? "No Station Selected"}
-                    </p>
-                  </div>
+                        <p className="text-xs text-[#64748B] select-none">
+                          {selectedStation?.name ?? "No Station Selected"}
+                        </p>
+                      </div>
 
-                  {selectedStation && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openAllDoors()}
-                        className="inline-flex items-center justify-center rounded-md border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-xs text-green-400 hover:bg-green-500/20"
-                      >
-                        Open All
-                      </button>
+                      {selectedStation && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openAllDoors()}
+                            className="inline-flex items-center justify-center rounded-md border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-xs text-green-400 hover:bg-green-500/20"
+                          >
+                            Open All
+                          </button>
 
-                      <button
-                        onClick={() => closeAllDoors()}
-                        className="inline-flex items-center justify-center rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
-                      >
-                        Close All
-                      </button>
+                          <button
+                            onClick={() => closeAllDoors()}
+                            className="inline-flex items-center justify-center rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
+                          >
+                            Close All
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                <div className="flex-1 overflow-y-auto p-3">
-                  {doorsLoading ? (
-                    <div className="flex h-full items-center justify-center">
-                      <p className="text-sm text-[#94A3B8]">
-                        Loading doors...
-                      </p>
-                    </div>
-                  ) : stationDoors.length > 0 ? (
-                    stationDoors.map((door: any) => (
-                      <div
-                        key={door.name}
-                        className="mb-2 rounded-lg border border-[#2A3145] bg-[#1A2030] p-3"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="truncate text-sm text-white select-none">
-                                {door.name}
-                              </p>
+                    <div className="flex-1 overflow-y-auto p-3">
+                      {doorsLoading ? (
+                        <div className="flex h-full items-center justify-center">
+                          <p className="text-sm text-[#94A3B8]">
+                            Loading doors...
+                          </p>
+                        </div>
+                      ) : stationDoors.length > 0 ? (
+                        stationDoors.map((door: any) => (
+                          <div
+                            key={door.name}
+                            className="mb-2 rounded-lg border border-[#2A3145] bg-[#1A2030] p-3"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-sm text-white select-none">
+                                    {door.name}
+                                  </p>
 
-                              <span
-                                className={`rounded px-2 py-0.5 text-[10px] font-medium ${
-                                  door.state === "open"
-                                    ? "bg-green-500/20 text-green-400"
-                                    : "bg-red-500/20 text-red-400"
-                                }`}
-                              >
-                                {door.state.toUpperCase()}
-                              </span>
+                                  <span
+                                    className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                                      door.state === "open"
+                                        ? "bg-green-500/20 text-green-400"
+                                        : "bg-red-500/20 text-red-400"
+                                    }`}
+                                  >
+                                    {door.state.toUpperCase()}
+                                  </span>
 
-                              {door.isolated && (
-                                <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
-                                  ISOLATED
-                                </span>
-                              )}
+                                  {door.isolated && (
+                                    <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
+                                      ISOLATED
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() =>
+                                    toggleDoor(door)
+                                  }
+                                  className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-xs ${
+                                    door.state === "open"
+                                      ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                                      : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                                  }`}
+                                >
+                                  {door.state === "open"
+                                    ? "Close"
+                                    : "Open"}
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setSelectedDoor(door);
+                                    setNewDoorName(door.name);
+                                    setRenameDoorModal(true);
+                                  }}
+                                  className="inline-flex items-center justify-center rounded-md bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                >
+                                  Rename
+                                </button>
+                              </div>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                toggleDoor(door)
-                              }
-                              className={`inline-flex items-center justify-center rounded-md px-2 py-1 text-xs ${
-                                door.state === "open"
-                                  ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                                  : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
-                              }`}
-                            >
-                              {door.state === "open"
-                                ? "Close"
-                                : "Open"}
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                setSelectedDoor(door);
-                                setNewDoorName(door.name);
-                                setRenameDoorModal(true);
-                              }}
-                              className="inline-flex items-center justify-center rounded-md bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
-                            >
-                              Rename
-                            </button>
-                          </div>
+                        ))
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <p className="text-sm text-[#94A3B8] select-none">
+                            {selectedStation
+                              ? "No doors available for this station."
+                              : "Select a station to view doors."}
+                          </p>
                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <p className="text-sm text-[#94A3B8] select-none">
-                        {selectedStation
-                          ? "No doors available for this station."
-                          : "Select a station to view doors."}
-                      </p>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </div>
-              </div>
+
               </div>
             </motion.div>
           </motion.div>

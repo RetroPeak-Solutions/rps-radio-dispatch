@@ -30,7 +30,7 @@ export default function DashboardPage() {
     const [serverPicker, setServerPicker] = useState<{
         communityId: string;
         communityName: string;
-        servers: Array<{ id: string; label: string; ip: string; port: string }>;
+        servers: Array<{ id: string; label: string; ip: string; port: string, infernoSecret?: string | undefined }>;
     } | null>(null);
     // const [joinDialogOpen, setJoinDialogOpen] = useState(false);
     // const [createDialogOpen, setCreateDialogOpen] = useState(false);
