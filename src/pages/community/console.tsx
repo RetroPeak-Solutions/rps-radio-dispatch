@@ -4530,21 +4530,23 @@ export default function CommunityConsole() {
                 Call Hist
               </button>
 
-              <button
-                id="station-access-btn"
-                data-interactive="true"
-                className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleStationAccess();
-                  void fetchStationAccess();
-                  // setCallHistoryOpen(true);
-                  // void fetchCallHistory();
-                }}
-              >
-                Station Access
-              </button>
+              {!selectedServer?.infernoSecret ? null :
+                <button
+                  id="station-access-btn"
+                  data-interactive="true"
+                  className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleStationAccess();
+                    void fetchStationAccess();
+                    // setCallHistoryOpen(true);
+                    // void fetchCallHistory();
+                  }}
+                >
+                  Station Access
+                </button>
+              }
             </div>
           </div>
         </div>
