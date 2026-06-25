@@ -48,6 +48,7 @@ type CommunityData = {
     label: string;
     ip: string;
     port: string;
+    infernoSecret?: string | undefined;
   }>;
   members?: Array<{
     userId: string;
@@ -57,6 +58,20 @@ type CommunityData = {
   radioChannels: RadioChannel[];
   tones: QuickCall2ToneSet[];
 };
+
+export interface Vector3 {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface StationConfig {
+  customdata: Record<string, any> | null;
+  doors: string[];
+  group: string | null;
+  name: string;
+  position: Vector3;
+}
 
 type AppSettings = Awaited<ReturnType<typeof window.api.settings.get>>;
 
@@ -244,6 +259,7 @@ import AudioIcon from "@assets/imgs/audio.png";
 import ClearEmerg from "@assets/imgs/clearemerg.png";
 import HoldIcon from "@assets/imgs/channelmarker.png";
 import PTT from "@assets/imgs/pttselect.png";
+import { useInfernoApi } from "@root/src/hooks/useInfernoApi";
 
 const AUDIO_SFX = {
   talkActive: TalkActiveSfx,
@@ -263,7 +279,7 @@ const ACTION_BTN_ICONS = {
   clearEmerg: ClearEmerg,
   hold: HoldIcon,
   ptt: PTT,
-}
+};
 
 const playSfx = async (
   src: string,
@@ -290,7 +306,7 @@ const playSfx = async (
     const finish = () => {
       if (done) return;
       done = true;
-       if (stopTimer !== null) {
+      if (stopTimer !== null) {
         window.clearTimeout(stopTimer);
       }
       resolve();
@@ -299,11 +315,17 @@ const playSfx = async (
     const scheduleEarlyStop = () => {
       if (!(stopAtRatio > 0 && stopAtRatio < 1)) return;
       if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
-      const stopMs = Math.max(1, Math.floor(audio.duration * stopAtRatio * 1000));
+      const stopMs = Math.max(
+        1,
+        Math.floor(audio.duration * stopAtRatio * 1000),
+      );
       stopTimer = window.setTimeout(() => {
         try {
           audio.pause();
-          audio.currentTime = Math.min(audio.duration, audio.duration * stopAtRatio);
+          audio.currentTime = Math.min(
+            audio.duration,
+            audio.duration * stopAtRatio,
+          );
         } catch {}
         finish();
       }, stopMs);
@@ -398,9 +420,14 @@ export default function CommunityConsole() {
   const [community, setCommunity] = useState<CommunityData | null>(null);
   const selectedServer = useMemo(() => {
     if (!community?.servers?.length || !selectedServerId) return null;
-    return community.servers.find((server) => server.id === selectedServerId) ?? null;
+    return (
+      community.servers.find((server) => server.id === selectedServerId) ?? null
+    );
   }, [community?.servers, selectedServerId]);
-  const [deviceInfo, setDeviceInfo] = useState<{ deviceId: string; serialNumber: string | null } | null>(null);
+  const [deviceInfo, setDeviceInfo] = useState<{
+    deviceId: string;
+    serialNumber: string | null;
+  } | null>(null);
   const [sessionUserId, setSessionUserId] = useState("");
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [consoleSettings, setConsoleSettings] = useState<ConsoleSettingsState>(
@@ -449,9 +476,10 @@ export default function CommunityConsole() {
   const [canvasHeight, setCanvasHeight] = useState(MIN_CANVAS_HEIGHT);
   const [canvasWidth, setCanvasWidth] = useState(0);
   const [viewportScale, setViewportScale] = useState(1);
-  const [autoWrapLayout, setAutoWrapLayout] = useState<
-    Record<string, { x: number; y: number }> | null
-  >(null);
+  const [autoWrapLayout, setAutoWrapLayout] = useState<Record<
+    string,
+    { x: number; y: number }
+  > | null>(null);
   const [zuluTime, setZuluTime] = useState("");
   const [localPttActive, setLocalPttActive] = useState(false);
   const [activePttIndicator, setActivePttIndicator] = useState<string | null>(
@@ -459,7 +487,9 @@ export default function CommunityConsole() {
   );
   const [pttDebug, setPttDebug] = useState("");
   const [peerIdState, setPeerIdState] = useState<string | null>(null);
-  const [peersState, setPeersState] = useState<Array<{ peerId: string; channelIds: string[] }>>([]);
+  const [peersState, setPeersState] = useState<
+    Array<{ peerId: string; channelIds: string[] }>
+  >([]);
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
   const [callHistoryLoading, setCallHistoryLoading] = useState(false);
   const [callHistoryItems, setCallHistoryItems] = useState<
@@ -496,8 +526,9 @@ export default function CommunityConsole() {
   const txFrameScriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
   const txFrameSilentGainRef = useRef<GainNode | null>(null);
   const rxFrameCtxRef = useRef<AudioContext | null>(null);
-  const rxFrameDestinationRef =
-    useRef<MediaStreamAudioDestinationNode | null>(null);
+  const rxFrameDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(
+    null,
+  );
   const rxFrameNextPlayTimeRef = useRef<number>(0);
   const activeVoiceChannelsRef = useRef<string[]>([]);
   const voiceSequenceRef = useRef(0);
@@ -539,7 +570,9 @@ export default function CommunityConsole() {
 
   const filteredCallHistoryItems = useMemo(
     () =>
-      callHistoryItems.filter((item) => item.eventType === callHistoryTypeFilter),
+      callHistoryItems.filter(
+        (item) => item.eventType === callHistoryTypeFilter,
+      ),
     [callHistoryItems, callHistoryTypeFilter],
   );
   const callHistoryTotalPages = Math.max(
@@ -548,7 +581,10 @@ export default function CommunityConsole() {
   );
   const pagedCallHistoryItems = useMemo(() => {
     const start = (callHistoryPage - 1) * CALL_HISTORY_PAGE_SIZE;
-    return filteredCallHistoryItems.slice(start, start + CALL_HISTORY_PAGE_SIZE);
+    return filteredCallHistoryItems.slice(
+      start,
+      start + CALL_HISTORY_PAGE_SIZE,
+    );
   }, [filteredCallHistoryItems, callHistoryPage]);
 
   useEffect(() => {
@@ -647,13 +683,13 @@ export default function CommunityConsole() {
       try {
         await (outputAudio as any).setSinkId(sinkId);
         voiceDebug("processed-output:setSinkId:ok", { sinkId });
-      } catch { }
+      } catch {}
     }
 
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch { }
+      } catch {}
     }
     outputAudio.play().catch((err) => {
       voiceWarn("processed-output:play-failed", err);
@@ -728,19 +764,19 @@ export default function CommunityConsole() {
     if (!pipeline) return;
     try {
       pipeline.source.disconnect();
-    } catch { }
+    } catch {}
     try {
       pipeline.outputGain.disconnect();
-    } catch { }
+    } catch {}
     try {
       pipeline.outputAudio.pause();
-    } catch { }
+    } catch {}
     try {
       pipeline.outputAudio.srcObject = null;
-    } catch { }
+    } catch {}
     try {
       void pipeline.context.close();
-    } catch { }
+    } catch {}
     delete remoteAudioPipelinesRef.current[socketId];
     delete noPipelineLogAtRef.current[socketId];
     delete noPipelineFirstSeenAtRef.current[socketId];
@@ -752,7 +788,8 @@ export default function CommunityConsole() {
     stream: MediaStream,
   ) => {
     const existing = remoteAudioPipelinesRef.current[socketId];
-    if (existing && existing.streamId === stream.id) return existing.outputAudio;
+    if (existing && existing.streamId === stream.id)
+      return existing.outputAudio;
     if (existing) teardownRemoteAudioPipeline(socketId);
 
     const AudioCtx =
@@ -760,7 +797,10 @@ export default function CommunityConsole() {
     if (!AudioCtx) return null;
     let ctx: AudioContext;
     try {
-      ctx = new AudioCtx({ latencyHint: "interactive", sampleRate: 16000 } as AudioContextOptions);
+      ctx = new AudioCtx({
+        latencyHint: "interactive",
+        sampleRate: 16000,
+      } as AudioContextOptions);
     } catch {
       ctx = new AudioCtx({ latencyHint: "interactive" } as AudioContextOptions);
     }
@@ -800,12 +840,12 @@ export default function CommunityConsole() {
     if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
       try {
         await (outputAudio as any).setSinkId(sinkId);
-      } catch { }
+      } catch {}
     }
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch { }
+      } catch {}
     }
     if (ctx!.state !== "running") {
       voiceWarn("remote-audio-pipeline:context-not-running", {
@@ -814,10 +854,10 @@ export default function CommunityConsole() {
       });
       try {
         outputAudio.srcObject = null;
-      } catch { }
+      } catch {}
       try {
         void ctx!.close();
-      } catch { }
+      } catch {}
       return null;
     }
     try {
@@ -829,10 +869,10 @@ export default function CommunityConsole() {
       });
       try {
         outputAudio.srcObject = null;
-      } catch { }
+      } catch {}
       try {
         void ctx!.close();
-      } catch { }
+      } catch {}
       return null;
     }
 
@@ -948,7 +988,10 @@ export default function CommunityConsole() {
   ) => {
     const targetSize = 320; // 20ms @ 16k
     if (!frame || frame.length === 0) return;
-    if (!txFrameQueueRef!.current || txFrameQueueRef?.current!.length < targetSize * 4) {
+    if (
+      !txFrameQueueRef!.current ||
+      txFrameQueueRef?.current!.length < targetSize * 4
+    ) {
       txFrameQueueRef!.current = new Int16Array(targetSize * 4);
       txFrameOffsetRef.current = 0;
     }
@@ -970,7 +1013,9 @@ export default function CommunityConsole() {
         offset = remaining;
       }
       if (offset >= txFrameQueueRef?.current!.length - targetSize) {
-        const next: Int16Array = new Int16Array(txFrameQueueRef?.current!.length * 2);
+        const next: Int16Array = new Int16Array(
+          txFrameQueueRef?.current!.length * 2,
+        );
         next.set(txFrameQueueRef.current!.subarray(0, offset), 0);
         txFrameQueueRef!.current = next;
       }
@@ -981,20 +1026,20 @@ export default function CommunityConsole() {
   const stopVoiceFrameCapture = () => {
     try {
       txFrameProcessorRef.current?.disconnect();
-    } catch { }
+    } catch {}
     if (txFrameScriptProcessorRef.current) {
       txFrameScriptProcessorRef.current.onaudioprocess = null;
     }
     try {
       txFrameSourceRef.current?.disconnect();
-    } catch { }
+    } catch {}
     try {
       txFrameSilentGainRef.current?.disconnect();
-    } catch { }
+    } catch {}
     if (txFrameCtxRef.current) {
       try {
         void txFrameCtxRef.current.close();
-      } catch { }
+      } catch {}
     }
     txFrameProcessorRef.current = null;
     txFrameScriptProcessorRef.current = null;
@@ -1094,7 +1139,7 @@ export default function CommunityConsole() {
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch { }
+      } catch {}
     }
 
     txFrameCtxRef.current = ctx;
@@ -1126,14 +1171,14 @@ export default function CommunityConsole() {
     if (sinkId && typeof (outputAudio as any).setSinkId === "function") {
       try {
         await (outputAudio as any).setSinkId(sinkId);
-      } catch { }
+      } catch {}
     }
     if (ctx!.state === "suspended") {
       try {
         await ctx!.resume();
-      } catch { }
+      } catch {}
     }
-    outputAudio.play().catch(() => { });
+    outputAudio.play().catch(() => {});
     return { ctx, destination: rxFrameDestinationRef.current };
   };
 
@@ -1142,7 +1187,7 @@ export default function CommunityConsole() {
     sampleRate: number,
     channelIds: string[],
   ) => {
-    console.log('[VoiceFrame] Incoming Voice Frame:', frameBase64);
+    console.log("[VoiceFrame] Incoming Voice Frame:", frameBase64);
     const normalized = Array.from(
       new Set((channelIds ?? []).map((id) => normalizeToZoneChannelId(id))),
     );
@@ -1150,8 +1195,8 @@ export default function CommunityConsole() {
       normalized.length > 0
         ? normalized
         : Object.entries(channelListening)
-          .filter(([, listening]) => listening)
-          .map(([id]) => id);
+            .filter(([, listening]) => listening)
+            .map(([id]) => id);
     if (effectiveChannelIds.length === 0) return;
     const out = await ensureRxFrameOutputReady();
     if (!out) return;
@@ -1197,19 +1242,22 @@ export default function CommunityConsole() {
     }
     gainNode.connect(destination);
 
-    const startAt = Math.max(ctx!.currentTime + 0.01, rxFrameNextPlayTimeRef.current);
+    const startAt = Math.max(
+      ctx!.currentTime + 0.01,
+      rxFrameNextPlayTimeRef.current,
+    );
     source.start(startAt);
     rxFrameNextPlayTimeRef.current = startAt + buffer.duration;
     source.onended = () => {
       try {
         source.disconnect();
-      } catch { }
+      } catch {}
       try {
         inputGain.disconnect();
-      } catch { }
+      } catch {}
       try {
         gainNode.disconnect();
-      } catch { }
+      } catch {}
     };
   };
 
@@ -1297,8 +1345,8 @@ export default function CommunityConsole() {
       normalized.length > 0
         ? normalized
         : Object.entries(channelListening)
-          .filter(([, listening]) => listening)
-          .map(([id]) => id);
+            .filter(([, listening]) => listening)
+            .map(([id]) => id);
     if (effectiveChannelIds.length === 0) {
       legacyLog("[RX Voice] No effective channels for this chunk");
       return;
@@ -1327,193 +1375,209 @@ export default function CommunityConsole() {
     drainIncomingVoiceQueue();
   };
 
-  const applyWebRtcAudioForSocket = useCallback((remoteSocketId: string) => {
-    const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
-    const pipeline = remoteAudioPipelinesRef.current[remoteSocketId];
-    const audio = webrtcAudioRef.current[remoteSocketId];
-    if (!pipeline && !audio) {
-      if (txChannels.length > 0) {
-        voiceDebug("apply-gain:no-audio-element", { remoteSocketId });
+  const applyWebRtcAudioForSocket = useCallback(
+    (remoteSocketId: string) => {
+      const txChannels = remoteTxChannelsRef.current[remoteSocketId] ?? [];
+      const pipeline = remoteAudioPipelinesRef.current[remoteSocketId];
+      const audio = webrtcAudioRef.current[remoteSocketId];
+      if (!pipeline && !audio) {
+        if (txChannels.length > 0) {
+          voiceDebug("apply-gain:no-audio-element", { remoteSocketId });
+        }
+        return;
       }
-      return;
-    }
 
-    const normalizedTxChannels = Array.from(
-      new Set(txChannels.map((id) => normalizeToZoneChannelId(id))),
-    );
-    const listened = normalizedTxChannels.filter((id) => channelListening[id]);
-    const channelsForGain = listened;
+      const normalizedTxChannels = Array.from(
+        new Set(txChannels.map((id) => normalizeToZoneChannelId(id))),
+      );
+      const listened = normalizedTxChannels.filter(
+        (id) => channelListening[id],
+      );
+      const channelsForGain = listened;
 
-    if (channelsForGain.length === 0) {
+      if (channelsForGain.length === 0) {
+        if (pipeline) {
+          pipeline.outputGain.gain.value = 0;
+        } else if (audio) {
+          audio.volume = 0;
+        }
+        voiceDebug("apply-gain:muted-no-listened", {
+          remoteSocketId,
+          txChannels,
+          normalizedTxChannels,
+        });
+        return;
+      }
+
+      const perChannel = channelsForGain.map((id) => {
+        const value = volumes[id] ?? 50;
+        return Math.max(0, Math.min(100, value));
+      });
+      const volume = Math.min(
+        3.0,
+        Math.max(
+          RX_AUDIO_MIN_GAIN,
+          (Math.max(...perChannel) / 100) * RX_AUDIO_BOOST,
+        ),
+      );
       if (pipeline) {
-        pipeline.outputGain.gain.value = 0;
+        pipeline.outputGain.gain.value = volume;
+        pipeline.outputAudio.volume = 1;
       } else if (audio) {
-        audio.volume = 0;
+        audio.volume = volume;
       }
-      voiceDebug("apply-gain:muted-no-listened", {
+      voiceDebug("apply-gain:active", {
         remoteSocketId,
-        txChannels,
-        normalizedTxChannels,
+        listened: channelsForGain,
+        volume,
       });
-      return;
-    }
+    },
+    [channelListening, volumes],
+  );
 
-    const perChannel = channelsForGain.map((id) => {
-      const value = volumes[id] ?? 50;
-      return Math.max(0, Math.min(100, value));
-    });
-    const volume = Math.min(
-      3.0,
-      Math.max(
-        RX_AUDIO_MIN_GAIN,
-        (Math.max(...perChannel) / 100) * RX_AUDIO_BOOST,
-      ),
-    );
-    if (pipeline) {
-      pipeline.outputGain.gain.value = volume;
-      pipeline.outputAudio.volume = 1;
-    } else if (audio) {
-      audio.volume = volume;
-    }
-    voiceDebug("apply-gain:active", {
-      remoteSocketId,
-      listened: channelsForGain,
-      volume,
-    });
-  }, [channelListening, volumes]);
-
-  const ensureWebRtcPeer = useCallback(async (targetSocketId: string) => {
-    debugLog("ensureWebRtcPeer:start", {
-      targetSocketId,
-      selfSocketId: socket?.id ?? null,
-      communityId,
-    });
-    if (!socket || !communityId || !targetSocketId) return null;
-    if (targetSocketId === socket.id) return null;
-
-    const existing = webrtcPeerConnectionsRef.current[targetSocketId];
-    if (existing) {
-      debugLog("ensureWebRtcPeer:reusing-existing", {
+  const ensureWebRtcPeer = useCallback(
+    async (targetSocketId: string) => {
+      debugLog("ensureWebRtcPeer:start", {
         targetSocketId,
-        signalingState: existing.signalingState,
-        connectionState: existing.connectionState,
-      });
-      return existing;
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-    });
-    webrtcPeerConnectionsRef.current[targetSocketId] = pc;
-
-    pc.onicecandidate = (event) => {
-      if (!event.candidate) return;
-      debugLog("ensureWebRtcPeer:onicecandidate", {
-        targetSocketId,
-        candidateType: event.candidate.type,
-        protocol: event.candidate.protocol,
-      });
-      socket.emit("dispatch:webrtc-signal", {
+        selfSocketId: socket?.id ?? null,
         communityId,
-        serverId: selectedServerId,
-        targetSocketId,
-        candidate: event.candidate.toJSON
-          ? event.candidate.toJSON()
-          : event.candidate,
       });
-    };
+      if (!socket || !communityId || !targetSocketId) return null;
+      if (targetSocketId === socket.id) return null;
 
-    pc.ontrack = (event) => {
-      const stream = event.streams?.[0];
-      if (!stream) return;
-      const track = stream.getAudioTracks()[0];
-      voiceDebug("webrtc:ontrack", {
-        targetSocketId,
-        streamId: stream.id,
-        audioTrackCount: stream.getAudioTracks().length,
-        trackId: track?.id ?? null,
-        trackEnabled: track?.enabled ?? null,
-        trackMuted: (track as any)?.muted ?? null,
-        trackReadyState: track?.readyState ?? null,
-      });
-      if (track) {
-        track.onmute = () =>
-          voiceWarn("webrtc:remote-track-muted", {
-            targetSocketId,
-            trackId: track.id,
-          });
-        track.onunmute = () =>
-          voiceDebug("webrtc:remote-track-unmuted", {
-            targetSocketId,
-            trackId: track.id,
-          });
-        track.onended = () => {
-          voiceWarn("webrtc:remote-track-ended", {
-            targetSocketId,
-            trackId: track.id,
-          });
-          teardownRemoteAudioPipeline(targetSocketId);
-          delete webrtcAudioRef.current[targetSocketId];
-        };
+      const existing = webrtcPeerConnectionsRef.current[targetSocketId];
+      if (existing) {
+        debugLog("ensureWebRtcPeer:reusing-existing", {
+          targetSocketId,
+          signalingState: existing.signalingState,
+          connectionState: existing.connectionState,
+        });
+        return existing;
       }
-      void ensureRemoteAudioPipeline(targetSocketId, stream).then((audio) => {
-        if (audio) {
-          webrtcAudioRef.current[targetSocketId] = audio;
+
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      });
+      webrtcPeerConnectionsRef.current[targetSocketId] = pc;
+
+      pc.onicecandidate = (event) => {
+        if (!event.candidate) return;
+        debugLog("ensureWebRtcPeer:onicecandidate", {
+          targetSocketId,
+          candidateType: event.candidate.type,
+          protocol: event.candidate.protocol,
+        });
+        socket.emit("dispatch:webrtc-signal", {
+          communityId,
+          serverId: selectedServerId,
+          targetSocketId,
+          candidate: event.candidate.toJSON
+            ? event.candidate.toJSON()
+            : event.candidate,
+        });
+      };
+
+      pc.ontrack = (event) => {
+        const stream = event.streams?.[0];
+        if (!stream) return;
+        const track = stream.getAudioTracks()[0];
+        voiceDebug("webrtc:ontrack", {
+          targetSocketId,
+          streamId: stream.id,
+          audioTrackCount: stream.getAudioTracks().length,
+          trackId: track?.id ?? null,
+          trackEnabled: track?.enabled ?? null,
+          trackMuted: (track as any)?.muted ?? null,
+          trackReadyState: track?.readyState ?? null,
+        });
+        if (track) {
+          track.onmute = () =>
+            voiceWarn("webrtc:remote-track-muted", {
+              targetSocketId,
+              trackId: track.id,
+            });
+          track.onunmute = () =>
+            voiceDebug("webrtc:remote-track-unmuted", {
+              targetSocketId,
+              trackId: track.id,
+            });
+          track.onended = () => {
+            voiceWarn("webrtc:remote-track-ended", {
+              targetSocketId,
+              trackId: track.id,
+            });
+            teardownRemoteAudioPipeline(targetSocketId);
+            delete webrtcAudioRef.current[targetSocketId];
+          };
+        }
+        void ensureRemoteAudioPipeline(targetSocketId, stream).then((audio) => {
+          if (audio) {
+            webrtcAudioRef.current[targetSocketId] = audio;
+            applyWebRtcAudioForSocket(targetSocketId);
+            voiceDebug("webrtc:ontrack:pipeline-ready", { targetSocketId });
+            return;
+          }
+          let fallbackAudio = webrtcAudioRef.current[targetSocketId];
+          if (!fallbackAudio) {
+            fallbackAudio = new Audio();
+            fallbackAudio.autoplay = true;
+            fallbackAudio.muted = false;
+            webrtcAudioRef.current[targetSocketId] = fallbackAudio;
+          }
+          fallbackAudio.srcObject = stream;
+          const sinkId = consoleSettings.outputDeviceId;
+          if (
+            sinkId &&
+            typeof (fallbackAudio as any).setSinkId === "function"
+          ) {
+            void (fallbackAudio as any).setSinkId(sinkId).catch(() => {});
+          }
+          void fallbackAudio.play().catch(() => {});
           applyWebRtcAudioForSocket(targetSocketId);
-          voiceDebug("webrtc:ontrack:pipeline-ready", { targetSocketId });
-          return;
-        }
-        let fallbackAudio = webrtcAudioRef.current[targetSocketId];
-        if (!fallbackAudio) {
-          fallbackAudio = new Audio();
-          fallbackAudio.autoplay = true;
-          fallbackAudio.muted = false;
-          webrtcAudioRef.current[targetSocketId] = fallbackAudio;
-        }
-        fallbackAudio.srcObject = stream;
-        const sinkId = consoleSettings.outputDeviceId;
-        if (sinkId && typeof (fallbackAudio as any).setSinkId === "function") {
-          void (fallbackAudio as any).setSinkId(sinkId).catch(() => { });
-        }
-        void fallbackAudio.play().catch(() => { });
-        applyWebRtcAudioForSocket(targetSocketId);
-        voiceWarn("webrtc:ontrack:fallback-raw-audio", { targetSocketId });
-      });
-    };
+          voiceWarn("webrtc:ontrack:fallback-raw-audio", { targetSocketId });
+        });
+      };
 
-    pc.onconnectionstatechange = () => {
-      debugLog("ensureWebRtcPeer:connection-state-change", {
-        targetSocketId,
-        state: pc.connectionState,
-      });
-      if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
-        try {
-          pc.close();
-        } catch { }
-        delete webrtcPeerConnectionsRef.current[targetSocketId];
-        if (webrtcAudioRef.current[targetSocketId]) {
+      pc.onconnectionstatechange = () => {
+        debugLog("ensureWebRtcPeer:connection-state-change", {
+          targetSocketId,
+          state: pc.connectionState,
+        });
+        if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
           try {
-            webrtcAudioRef.current[targetSocketId].srcObject = null;
-          } catch { }
-          delete webrtcAudioRef.current[targetSocketId];
+            pc.close();
+          } catch {}
+          delete webrtcPeerConnectionsRef.current[targetSocketId];
+          if (webrtcAudioRef.current[targetSocketId]) {
+            try {
+              webrtcAudioRef.current[targetSocketId].srcObject = null;
+            } catch {}
+            delete webrtcAudioRef.current[targetSocketId];
+          }
+          teardownRemoteAudioPipeline(targetSocketId);
+          delete remoteTxChannelsRef.current[targetSocketId];
+          delete pendingIceCandidatesRef.current[targetSocketId];
         }
-        teardownRemoteAudioPipeline(targetSocketId);
-        delete remoteTxChannelsRef.current[targetSocketId];
-        delete pendingIceCandidatesRef.current[targetSocketId];
+      };
+
+      const stream = micStreamRef.current;
+      if (stream) {
+        debugLog("ensureWebRtcPeer:sync-sender-with-existing-stream", {
+          targetSocketId,
+          streamId: stream.id,
+        });
+        await syncPeerAudioSender(pc, stream);
       }
-    };
 
-    const stream = micStreamRef.current;
-    if (stream) {
-      debugLog("ensureWebRtcPeer:sync-sender-with-existing-stream", {
-        targetSocketId,
-        streamId: stream.id,
-      });
-      await syncPeerAudioSender(pc, stream);
-    }
-
-    return pc;
-  }, [socket, communityId, consoleSettings.outputDeviceId, applyWebRtcAudioForSocket]);
+      return pc;
+    },
+    [
+      socket,
+      communityId,
+      consoleSettings.outputDeviceId,
+      applyWebRtcAudioForSocket,
+    ],
+  );
 
   const stopVoiceCapture = () => {
     debugLog("stopVoiceCapture:start", {
@@ -1594,15 +1658,12 @@ export default function CommunityConsole() {
   };
 
   const sensors = useSensors(useSensor(PointerSensor));
-  const sortedZones = useMemo(
-    () => {
-      const zones = Array.isArray(community?.radioZones)
-        ? community.radioZones
-        : [];
-      return [...zones].sort((a, b) => a.codeplugIndex - b.codeplugIndex);
-    },
-    [community],
-  );
+  const sortedZones = useMemo(() => {
+    const zones = Array.isArray(community?.radioZones)
+      ? community.radioZones
+      : [];
+    return [...zones].sort((a, b) => a.codeplugIndex - b.codeplugIndex);
+  }, [community]);
   const activeZone = sortedZones[activeZoneIndex];
   const activeZoneItemIds = useMemo(
     () =>
@@ -1902,7 +1963,9 @@ export default function CommunityConsole() {
       });
       return;
     }
-    const newlyActivatedChannels = channels.filter((id) => !channelPanicActive[id]);
+    const newlyActivatedChannels = channels.filter(
+      (id) => !channelPanicActive[id],
+    );
     if (newlyActivatedChannels.length === 0) {
       toast("Selected channels are already in panic state.", {
         type: "info",
@@ -1932,7 +1995,10 @@ export default function CommunityConsole() {
       const next = !prev[channelId];
       if (!next) {
         clearHoldToneInterval(channelId);
-        setChannelHoldActive((holdPrev) => ({ ...holdPrev, [channelId]: false }));
+        setChannelHoldActive((holdPrev) => ({
+          ...holdPrev,
+          [channelId]: false,
+        }));
       }
       debugLog("toggleListening", {
         channelId,
@@ -2179,9 +2245,9 @@ export default function CommunityConsole() {
       } else {
         setActivePttIndicator(
           indicatorLabel ??
-          (normalizedChannelIds.length === 1
-            ? normalizedChannelIds[0]
-            : "ACTIVE"),
+            (normalizedChannelIds.length === 1
+              ? normalizedChannelIds[0]
+              : "ACTIVE"),
         );
       }
       setChannelsState(normalizedChannelIds, "tx", active);
@@ -2340,12 +2406,13 @@ export default function CommunityConsole() {
                     : { "x-dispatch-device-serial": "unknown" }),
                   "x-dispatch-client": "1",
                 }
-              : { "x-dispatch-client": "1", "x-dispatch-device-id": "unknown", 
-                ...(deviceInfo?.serialNumber ? 
-                  { "x-dispatch-device-serial": deviceInfo?.serialNumber } : 
-                  { "x-dispatch-device-serial": "unknown" }
-                ),
-              }
+              : {
+                  "x-dispatch-client": "1",
+                  "x-dispatch-device-id": "unknown",
+                  ...(deviceInfo?.serialNumber
+                    ? { "x-dispatch-device-serial": deviceInfo?.serialNumber }
+                    : { "x-dispatch-device-serial": "unknown" }),
+                },
           },
         );
         clearCommunityBan(communityId);
@@ -2363,7 +2430,9 @@ export default function CommunityConsole() {
           return;
         }
         if (servers.length > 0 && selectedServerId) {
-          const exists = servers.some((server: any) => String(server.id) === selectedServerId);
+          const exists = servers.some(
+            (server: any) => String(server.id) === selectedServerId,
+          );
           if (!exists) {
             toast("Selected server was not found in this community.", {
               type: "error",
@@ -2375,7 +2444,7 @@ export default function CommunityConsole() {
 
         const loaded = normalizeSettings(
           (await window.api?.settings?.get?.()) ?? null,
-        )
+        );
         setSettings(loaded);
         setConsoleSettings(getCommunityConsoleSettings(loaded, communityId));
         setCommunityPttBindings(getCommunityPttBindings(loaded, communityId));
@@ -2416,10 +2485,27 @@ export default function CommunityConsole() {
     };
 
     fetchData();
-  }, [communityId, community, setLoading, banState, navigate, toast, deviceInfo?.serialNumber, deviceInfo?.deviceId, selectedServerId]);
+  }, [
+    communityId,
+    community,
+    setLoading,
+    banState,
+    navigate,
+    toast,
+    deviceInfo?.serialNumber,
+    deviceInfo?.deviceId,
+    selectedServerId,
+  ]);
 
   useEffect(() => {
-    if (!communityId || !community || !sessionUserId || !deviceInfo?.deviceId || banState) return;
+    if (
+      !communityId ||
+      !community ||
+      !sessionUserId ||
+      !deviceInfo?.deviceId ||
+      banState
+    )
+      return;
     const headers = {
       "x-dispatch-device-id": deviceInfo.deviceId || "unknown",
       "x-dispatch-device-serial": deviceInfo?.serialNumber || "unknown",
@@ -2472,15 +2558,33 @@ export default function CommunityConsole() {
       ended = true;
       if (heartbeatTimer) window.clearInterval(heartbeatTimer);
       if (liveSessionId) {
-        void sendSessionEvent("end", liveSessionId, "community-console-unmount");
+        void sendSessionEvent(
+          "end",
+          liveSessionId,
+          "community-console-unmount",
+        );
       }
       dispatchSessionIdRef.current = "";
     };
-  }, [communityId, community, sessionUserId, banState, deviceInfo?.deviceId, deviceInfo?.serialNumber]);
+  }, [
+    communityId,
+    community,
+    sessionUserId,
+    banState,
+    deviceInfo?.deviceId,
+    deviceInfo?.serialNumber,
+  ]);
 
   // ---------------- SOCKET JOIN + EVENTS ----------------
   useEffect(() => {
-    if (!socket || !communityId || !sessionUserId || !deviceInfo || !deviceInfo?.deviceId) return;
+    if (
+      !socket ||
+      !communityId ||
+      !sessionUserId ||
+      !deviceInfo ||
+      !deviceInfo?.deviceId
+    )
+      return;
 
     if (!banState) {
       debugLog("socket-effect:mount", {
@@ -2544,14 +2648,14 @@ export default function CommunityConsole() {
         if (pc) {
           try {
             pc.close();
-          } catch { }
+          } catch {}
           delete webrtcPeerConnectionsRef.current[event.socketId];
         }
         const audio = webrtcAudioRef.current[event.socketId];
         if (audio) {
           try {
             audio.srcObject = null;
-          } catch { }
+          } catch {}
           delete webrtcAudioRef.current[event.socketId];
         }
         teardownRemoteAudioPipeline(event.socketId);
@@ -2599,9 +2703,14 @@ export default function CommunityConsole() {
       userId?: string;
       ban?: { reason?: string | null; expiresAt?: string | null };
     }) => {
-      console.log("[Ban State Event]: Dispatch Banned")
+      console.log("[Ban State Event]: Dispatch Banned");
       if (!event?.code) return;
-      if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
+      if (
+        event.userId &&
+        sessionUserId &&
+        String(event.userId) !== String(sessionUserId)
+      )
+        return;
       const activeChannels = [...activePttChannelsRef.current];
       if (activeChannels.length > 0) {
         void transmitPtt(false, activeChannels);
@@ -2629,7 +2738,12 @@ export default function CommunityConsole() {
       expiresAt?: string | null;
     }) => {
       if (!event?.action || !event?.code) return;
-      if (event.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
+      if (
+        event.userId &&
+        sessionUserId &&
+        String(event.userId) !== String(sessionUserId)
+      )
+        return;
       if (event.action === "unbanned") {
         clearCommunityBan(communityId);
         return;
@@ -2653,11 +2767,14 @@ export default function CommunityConsole() {
       toast("Access denied for this community console.", { type: "error" });
     };
 
-    const onDispatchBanCleared = (event: {
-      userId?: string;
-    }) => {
-      console.log("[Ban State Event]: Dispatch Unbanned")
-      if (event?.userId && sessionUserId && String(event.userId) !== String(sessionUserId)) return;
+    const onDispatchBanCleared = (event: { userId?: string }) => {
+      console.log("[Ban State Event]: Dispatch Unbanned");
+      if (
+        event?.userId &&
+        sessionUserId &&
+        String(event.userId) !== String(sessionUserId)
+      )
+        return;
       clearCommunityBan(communityId);
     };
 
@@ -2699,7 +2816,9 @@ export default function CommunityConsole() {
       const normalizedIds = Array.from(
         new Set(ids.map((id) => normalizeToZoneChannelId(id))),
       );
-      const listenedIds = normalizedIds.filter((id) => isListeningChannelId(id));
+      const listenedIds = normalizedIds.filter((id) =>
+        isListeningChannelId(id),
+      );
       const isSelfSocketEvent = Boolean(
         event.socketId && event.socketId === socket.id,
       );
@@ -2714,7 +2833,9 @@ export default function CommunityConsole() {
         if (event.active) {
           remoteTxChannelsRef.current[event.socketId] = normalizedIds;
         } else {
-          const remaining = existing.filter((id) => !normalizedIds.includes(id));
+          const remaining = existing.filter(
+            (id) => !normalizedIds.includes(id),
+          );
           remoteTxChannelsRef.current[event.socketId] = remaining;
         }
         applyWebRtcAudioForSocket(event.socketId);
@@ -2757,7 +2878,9 @@ export default function CommunityConsole() {
         new Set(ids.map((id) => normalizeToZoneChannelId(id))),
       );
 
-      const isSelfEvent = Boolean(event.socketId && event.socketId === socket.id);
+      const isSelfEvent = Boolean(
+        event.socketId && event.socketId === socket.id,
+      );
       if (isSelfEvent) return;
       const tones = event.tones ?? [];
 
@@ -2969,7 +3092,11 @@ export default function CommunityConsole() {
       if (isWebmOpus) {
         playIncomingChunk(event.chunkBase64, mimeType, playbackChannels);
       } else {
-        enqueueIncomingVoiceChunk(event.chunkBase64, mimeType, playbackChannels);
+        enqueueIncomingVoiceChunk(
+          event.chunkBase64,
+          mimeType,
+          playbackChannels,
+        );
       }
     };
 
@@ -2985,7 +3112,7 @@ export default function CommunityConsole() {
       console.log(
         `[VOICE ORIGIN][dispatch][frame] ${event?.originClientType ?? "unknown"}`,
       );
-      console.log('[VoiceFrame] Incoming Voice Frame:', event);
+      console.log("[VoiceFrame] Incoming Voice Frame:", event);
       if (
         !event?.frameBase64 ||
         !Array.isArray(event.channelIds) ||
@@ -3080,9 +3207,29 @@ export default function CommunityConsole() {
       socket.off("dispatch:ptt:relay", onPtt);
       socket.off("dispatch:voice:relay", onVoice);
       socket.off("dispatch:voice-frame:relay", onVoiceFrame);
-      socket.emit("dispatch:leave", { communityId, serverId: selectedServerId });
+      socket.emit("dispatch:leave", {
+        communityId,
+        serverId: selectedServerId,
+      });
     };
-  }, [socket, communityId, channelListening, volumes, allZoneChannelIds, zoneChannelIdByRadioChannelId, radioChannelIdByZoneChannelId, consoleSettings.inputDeviceId, consoleSettings.outputDeviceId, listenedChannelIds, applyWebRtcAudioForSocket, sessionUserId, deviceInfo, deviceInfo?.deviceId, deviceInfo?.serialNumber, banState]);
+  }, [
+    socket,
+    communityId,
+    channelListening,
+    volumes,
+    allZoneChannelIds,
+    zoneChannelIdByRadioChannelId,
+    radioChannelIdByZoneChannelId,
+    consoleSettings.inputDeviceId,
+    consoleSettings.outputDeviceId,
+    listenedChannelIds,
+    applyWebRtcAudioForSocket,
+    sessionUserId,
+    deviceInfo,
+    deviceInfo?.deviceId,
+    deviceInfo?.serialNumber,
+    banState,
+  ]);
 
   useEffect(() => {
     if (!socket || !communityId || !selectedServerId) return;
@@ -3103,7 +3250,13 @@ export default function CommunityConsole() {
         });
       }
     });
-  }, [socket, communityId, selectedServerId, channelListening, radioChannelIdByZoneChannelId]);
+  }, [
+    socket,
+    communityId,
+    selectedServerId,
+    channelListening,
+    radioChannelIdByZoneChannelId,
+  ]);
 
   useEffect(() => {
     if (!socket || !communityId || !socket.id) return;
@@ -3204,7 +3357,8 @@ export default function CommunityConsole() {
             });
           }
           if (remoteDescriptionApplied) {
-            const queued = pendingIceCandidatesRef.current[event.fromSocketId] ?? [];
+            const queued =
+              pendingIceCandidatesRef.current[event.fromSocketId] ?? [];
             if (queued.length > 0) {
               for (const candidate of queued) {
                 await pc.addIceCandidate(candidate);
@@ -3223,10 +3377,13 @@ export default function CommunityConsole() {
             if (!pendingIceCandidatesRef.current[event.fromSocketId]) {
               pendingIceCandidatesRef.current[event.fromSocketId] = [];
             }
-            pendingIceCandidatesRef.current[event.fromSocketId].push(event.candidate);
+            pendingIceCandidatesRef.current[event.fromSocketId].push(
+              event.candidate,
+            );
             debugLog("onWebRtcSignal:queueIceCandidate", {
               fromSocketId: event.fromSocketId,
-              queued: pendingIceCandidatesRef.current[event.fromSocketId].length,
+              queued:
+                pendingIceCandidatesRef.current[event.fromSocketId].length,
             });
           } else {
             await pc.addIceCandidate(event.candidate);
@@ -3246,13 +3403,13 @@ export default function CommunityConsole() {
       Object.keys(webrtcPeerConnectionsRef.current).forEach((socketId) => {
         try {
           webrtcPeerConnectionsRef.current[socketId].close();
-        } catch { }
+        } catch {}
         delete webrtcPeerConnectionsRef.current[socketId];
       });
       Object.keys(webrtcAudioRef.current).forEach((socketId) => {
         try {
           webrtcAudioRef.current[socketId].srcObject = null;
-        } catch { }
+        } catch {}
         delete webrtcAudioRef.current[socketId];
         teardownRemoteAudioPipeline(socketId);
       });
@@ -3271,15 +3428,22 @@ export default function CommunityConsole() {
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
   const chunkVoiceSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const chunkVoiceDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
+  const chunkVoiceDestinationRef =
+    useRef<MediaStreamAudioDestinationNode | null>(null);
   const chunkVoiceProcessingReadyRef = useRef(false);
 
   // WebRTC refs
-  const peerMapRef = useRef<Record<string, { peerId: string; channelIds: string[] }>>({});
-  const webrtcPeerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
+  const peerMapRef = useRef<
+    Record<string, { peerId: string; channelIds: string[] }>
+  >({});
+  const webrtcPeerConnectionsRef = useRef<Record<string, RTCPeerConnection>>(
+    {},
+  );
   const webrtcAudioRef = useRef<Record<string, HTMLAudioElement>>({});
   const remoteTxChannelsRef = useRef<Record<string, string[]>>({});
-  const pendingIceCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
+  const pendingIceCandidatesRef = useRef<Record<string, RTCIceCandidateInit[]>>(
+    {},
+  );
 
   const pendingChunksRef = useRef<Uint8Array[]>([]);
   const accumulatedChunksRef = useRef<Uint8Array[]>([]);
@@ -3453,8 +3617,8 @@ export default function CommunityConsole() {
       normalized.length > 0
         ? normalized
         : Object.entries(channelListening)
-          .filter(([, listening]) => listening)
-          .map(([id]) => id);
+            .filter(([, listening]) => listening)
+            .map(([id]) => id);
     if (effectiveChannelIds.length === 0) {
       legacyLog("[RX Audio] No effective channels for this chunk");
       return;
@@ -3468,7 +3632,10 @@ export default function CommunityConsole() {
       (Math.max(...perChannelVolumes) / 100) * RX_AUDIO_BOOST,
     );
 
-    legacyLog("[RX Audio] Received chunk -> queueing (size):", chunkBase64.length);
+    legacyLog(
+      "[RX Audio] Received chunk -> queueing (size):",
+      chunkBase64.length,
+    );
 
     // Ensure the MediaSource + SourceBuffer are ready
     initIncomingAudio();
@@ -3490,7 +3657,9 @@ export default function CommunityConsole() {
       0,
     );
     if (currentPending + bytes.byteLength > MAX_PENDING) {
-      console.warn("[RX Audio] Pending queue exceeded max size, clearing old data");
+      console.warn(
+        "[RX Audio] Pending queue exceeded max size, clearing old data",
+      );
       pendingChunksRef.current = [];
     }
 
@@ -3502,19 +3671,28 @@ export default function CommunityConsole() {
     );
 
     // Start watchdog to clear stalled receives
-    if (receiveWatchdogRef.current) window.clearTimeout(receiveWatchdogRef.current);
+    if (receiveWatchdogRef.current)
+      window.clearTimeout(receiveWatchdogRef.current);
     receiveWatchdogRef.current = window.setTimeout(() => {
-      console.warn("[RX Audio] Receive watchdog expired - clearing pending queue and reinitializing");
+      console.warn(
+        "[RX Audio] Receive watchdog expired - clearing pending queue and reinitializing",
+      );
       pendingChunksRef.current = [];
       try {
-        if (mediaSourceRef.current && mediaSourceRef.current.readyState === "open") {
+        if (
+          mediaSourceRef.current &&
+          mediaSourceRef.current.readyState === "open"
+        ) {
           try {
             mediaSourceRef.current.endOfStream();
           } catch (err) {
-            console.error("[RX Audio] endOfStream during watchdog failed:", err);
+            console.error(
+              "[RX Audio] endOfStream during watchdog failed:",
+              err,
+            );
           }
         }
-      } catch { }
+      } catch {}
       audioElementRef.current = null;
       mediaSourceRef.current = null;
       sourceBufferRef.current = null;
@@ -3526,7 +3704,9 @@ export default function CommunityConsole() {
 
   const playAccumulatedAudio = async () => {
     // Deprecated: accumulated-blob playback is removed in favor of MediaSource streaming.
-    legacyLog("[RX Audio] playAccumulatedAudio() called - deprecated path, no-op");
+    legacyLog(
+      "[RX Audio] playAccumulatedAudio() called - deprecated path, no-op",
+    );
   };
 
   useEffect(() => {
@@ -3586,7 +3766,8 @@ export default function CommunityConsole() {
   useEffect(() => {
     if (!baseDevicePixelRatioRef.current) {
       const initialDpr =
-        typeof window !== "undefined" && Number.isFinite(window.devicePixelRatio)
+        typeof window !== "undefined" &&
+        Number.isFinite(window.devicePixelRatio)
           ? window.devicePixelRatio
           : 1;
       baseDevicePixelRatioRef.current = Math.max(1, initialDpr || 1);
@@ -3709,13 +3890,16 @@ export default function CommunityConsole() {
     );
     const zoomedIn = viewportScale > 1.02;
     const shouldAutoWrap =
-      !editMode && zoomedIn && savedLayoutMaxRight > effectiveWidth - CARD_SPACING;
+      !editMode &&
+      zoomedIn &&
+      savedLayoutMaxRight > effectiveWidth - CARD_SPACING;
 
     if (shouldAutoWrap) {
       setAutoWrapLayout(fallbackByIndex);
       const wrappedLowest =
-        Math.max(...Object.values(fallbackByIndex).map((p) => p.y + CARD_HEIGHT)) +
-        CARD_SPACING;
+        Math.max(
+          ...Object.values(fallbackByIndex).map((p) => p.y + CARD_HEIGHT),
+        ) + CARD_SPACING;
       setCanvasHeight(Math.max(wrappedLowest, MIN_CANVAS_HEIGHT));
       return;
     }
@@ -3879,35 +4063,238 @@ export default function CommunityConsole() {
       });
       try {
         chunkVoiceSourceRef.current?.disconnect();
-      } catch { }
+      } catch {}
       try {
         chunkVoiceDestinationRef.current?.disconnect();
-      } catch { }
+      } catch {}
       chunkVoiceSourceRef.current = null;
       chunkVoiceDestinationRef.current = null;
       chunkVoiceProcessingReadyRef.current = false;
       if (sharedAudioCtxRef.current) {
         try {
           void sharedAudioCtxRef.current.close();
-        } catch { }
+        } catch {}
         sharedAudioCtxRef.current = null;
       }
       if (rxFrameCtxRef.current) {
         try {
           void rxFrameCtxRef.current.close();
-        } catch { }
+        } catch {}
         rxFrameCtxRef.current = null;
       }
     };
   }, []);
 
+  const [showStationAccess, setShowStationAccess] = useState(false);
+  const [stationAccessData, setStationAccessData] = useState<any>(null);
+  const [stationAccessLoading, setStationAccessLoading] = useState(false);
+
+  const [selectedStation, setSelectedStation] = useState<StationConfig | null>(
+    null,
+  );
+
+  const toggleStationAccess = () => {
+    setShowStationAccess((prev) => !prev);
+  };
+
+  const { request: infernoReq, loading, error } = useInfernoApi(selectedServer);
+
+  const fetchStationAccess = async () => {
+    try {
+      setStationAccessLoading(true);
+      const stations = await infernoReq("locations");
+      setStationAccessData(stations);
+      // Handle the fetched station access data
+    } catch (error) {
+      toast("An error occurred while fetching station access data.", {
+        type: "error",
+      });
+      console.error("Error fetching station access:", error);
+    } finally {
+      setStationAccessLoading(false);
+    }
+  };
+
+  const [renameDoorModal, setRenameDoorModal] = useState(false);
+  const [selectedDoor, setSelectedDoor] = useState<any>(null);
+  const [newDoorName, setNewDoorName] = useState("");
+
+  const renameDoor = async (
+    stationName: string,
+    currentDoorName: string,
+    newDoorName: string,
+  ) => {
+    try {
+      await infernoReq("doors/rename", {
+        method: "POST",
+        body: JSON.stringify({
+          locations: {
+            [stationName]: {
+              [currentDoorName]: newDoorName,
+            },
+          },
+        }),
+      });
+
+      toast("Door renamed successfully.", {
+        type: "success",
+      });
+
+      await fetchStationDoors(stationName);
+    } catch (error) {
+      console.error(error);
+
+      toast("Failed to rename door.", {
+        type: "error",
+      });
+    }
+  };
+
+  const [stationDoors, setStationDoors] = useState<any[]>([]);
+  const [doorsLoading, setDoorsLoading] = useState(false);
+
+  const fetchStationDoors = async (stationName: string) => {
+    try {
+      setDoorsLoading(true);
+
+      const doors = await infernoReq(`doors/${stationName}`);
+
+      const formattedDoors = [
+        ...(doors.open || []).map((name: string) => ({
+          name,
+          state: "open",
+          isolated: false,
+        })),
+        ...(doors.closed || []).map((name: string) => ({
+          name,
+          state: "closed",
+          isolated: false,
+        })),
+        ...(doors.isolatedOpen || []).map((name: string) => ({
+          name,
+          state: "open",
+          isolated: true,
+        })),
+        ...(doors.isolatedClosed || []).map((name: string) => ({
+          name,
+          state: "closed",
+          isolated: true,
+        })),
+      ];
+
+      setStationDoors(formattedDoors);
+    } catch (error) {
+      toast("Failed to load station doors.", { type: "error" });
+      console.error("Error fetching doors:", error);
+      setStationDoors([]);
+    } finally {
+      setDoorsLoading(false);
+    }
+  };
+
+  const openAllDoors = async () => {
+    if (!selectedStation) return;
+
+    const payload = {
+      open: {
+        [selectedStation.name]: [],
+      },
+    };
+
+    try {
+      // optimistic UI update
+      setStationDoors((prev) =>
+        prev.map((d) => ({
+          ...d,
+          state: "open",
+        })),
+      );
+
+      await infernoReq("doors", {
+        method: "POST",
+        body: payload,
+      });
+    } catch (err) {
+      console.error(err);
+      await fetchStationDoors(selectedStation.name);
+    }
+  };
+
+  const closeAllDoors = async () => {
+    if (!selectedStation) return;
+
+    const payload = {
+      close: {
+        [selectedStation.name!]: [],
+      },
+    };
+
+    // optimistic UI update
+    setStationDoors((prev) =>
+      prev.map((d) => ({
+        ...d,
+        state: "closed",
+      })),
+    );
+
+    await infernoReq("doors", {
+      method: "POST",
+      body: payload,
+    });
+
+    // setStationDoors((prev) => prev.map((d) => ({ ...d, isOpen: false })));
+  };
+
+  const toggleDoor = async (targetDoor: any) => {
+    if (!selectedStation) return;
+
+    const isOpen = targetDoor.state === "open";
+
+    const payload = {
+      [isOpen ? "close" : "open"]: {
+        [selectedStation.name]: [targetDoor.name],
+      },
+    };
+
+    try {
+      // optimistic update (ONLY match correct door)
+      setStationDoors((prev) =>
+        prev.map((d) =>
+          d.name === targetDoor.name
+            ? {
+                ...d,
+                state: isOpen ? "closed" : "open",
+              }
+            : d,
+        ),
+      );
+
+      await infernoReq("doors", {
+        method: "POST",
+        body: payload,
+      });
+    } catch (err) {
+      console.error(err);
+
+      // rollback if fail
+      await fetchStationDoors(selectedStation.name);
+    }
+  };
+
   if (banState) {
     return (
       <div className="min-h-screen bg-[#0B1220] text-white font-mono flex items-center justify-center p-6">
         <div className="w-full max-w-xl rounded-2xl border border-red-500/40 bg-[#1A0F14] p-6 space-y-4">
-          <div className="text-sm uppercase tracking-wide text-red-300/80">{community?.name ? community.name : "System"} Access Restricted</div>
+          <div className="text-sm uppercase tracking-wide text-red-300/80">
+            {community?.name ? community.name : "System"} Access Restricted
+          </div>
           <h1 className="text-2xl font-bold text-red-200">
-            {community?.name ? `${community.name} Console` : banState.code === "SYSTEM_BANNED" ? "System Account" : "Dispatch Console" } Banned
+            {community?.name
+              ? `${community.name} Console`
+              : banState.code === "SYSTEM_BANNED"
+                ? "System Account"
+                : "Dispatch Console"}{" "}
+            Banned
           </h1>
           <p className="text-sm text-red-100/90">
             {banState.message || "You are banned from this community console."}
@@ -3976,7 +4363,8 @@ export default function CommunityConsole() {
               <h1 className="mt-2">{community.name} | Dispatch Console</h1>
               {selectedServer ? (
                 <span className="mt-2 ml-3 text-xs rounded border border-white/20 bg-white/10 px-2 py-1">
-                  Server: {selectedServer.label} ({selectedServer.ip}:{selectedServer.port})
+                  Server: {selectedServer.label} ({selectedServer.ip}:
+                  {selectedServer.port})
                 </span>
               ) : null}
             </div>
@@ -4018,98 +4406,83 @@ export default function CommunityConsole() {
             className="z-15 w-full px-2 py-1.5 min-h-fit bg-[#0C1524] border-y border-[#2A3145] overflow-x-auto overflow-y-hidden"
           >
             <div className="flex flex-row items-stretch gap-1 min-w-max text-white">
-            <button
-              id="global-instant-ptt-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
-              // disabled={!channelChildrenEnabled}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                void transmitPtt(true, listenedChannelIds, "GLOBAL", true);
-                return;
-              }}
-              onPointerUp={(e) => {
-                e.stopPropagation();
-                void transmitPtt(false, listenedChannelIds);
-                return;
-              }}
-            >
-              <img
-                width={30}
-                height={30}
-                src={ACTION_BTN_ICONS.ptt}
-              />
-            </button>
-            <button
-              id="alert1-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
-              // disabled={!channelChildrenEnabled}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                emitActionAlertTone(1);
-              }}
-            >
-              <img
-                width={30}
-                height={30}
-                src={ACTION_BTN_ICONS.alertTone}
-              />
-            </button>
-            <button
-              id="alert2-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
-              // disabled={!channelChildrenEnabled}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                emitActionAlertTone(2);
-              }}
-            >
-              <img
-                width={30}
-                height={30}
-                src={ACTION_BTN_ICONS.alertTone}
-              />
-            </button>
-            <button
-              id="alert3-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
-              // disabled={!channelChildrenEnabled}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                emitActionAlertTone(3);
-              }}
-            >
-              <img
-                width={30}
-                height={30}
-                src={ACTION_BTN_ICONS.alertTone}
-              />
-            </button>
+              <button
+                id="global-instant-ptt-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+                // disabled={!channelChildrenEnabled}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  void transmitPtt(true, listenedChannelIds, "GLOBAL", true);
+                  return;
+                }}
+                onPointerUp={(e) => {
+                  e.stopPropagation();
+                  void transmitPtt(false, listenedChannelIds);
+                  return;
+                }}
+              >
+                <img width={30} height={30} src={ACTION_BTN_ICONS.ptt} />
+              </button>
+              <button
+                id="alert1-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+                // disabled={!channelChildrenEnabled}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  emitActionAlertTone(1);
+                }}
+              >
+                <img width={30} height={30} src={ACTION_BTN_ICONS.alertTone} />
+              </button>
+              <button
+                id="alert2-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+                // disabled={!channelChildrenEnabled}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  emitActionAlertTone(2);
+                }}
+              >
+                <img width={30} height={30} src={ACTION_BTN_ICONS.alertTone} />
+              </button>
+              <button
+                id="alert3-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] active:scale-[0.98] transition"
+                // disabled={!channelChildrenEnabled}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  emitActionAlertTone(3);
+                }}
+              >
+                <img width={30} height={30} src={ACTION_BTN_ICONS.alertTone} />
+              </button>
 
-            <button
-              id="clear-emerg-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#ff4d4dcc] bg-[#5C1414] text-[#FFD3D3] hover:bg-[#7A1A1A] active:scale-[0.98] transition shadow-[0_0_10px_rgba(255,77,77,0.35)]"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                socket?.emit("dispatch:panic-cleared", {
-                  communityId,
-                  serverId: selectedServerId,
-                  source: dispatchSource,
-                  timestamp: Date.now(),
-                });
-              }}
-            >
-              <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
-            </button>
-            {/* <button
+              <button
+                id="clear-emerg-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center gap-2 px-3 h-14 min-w-14 rounded-md border border-[#ff4d4dcc] bg-[#5C1414] text-[#FFD3D3] hover:bg-[#7A1A1A] active:scale-[0.98] transition shadow-[0_0_10px_rgba(255,77,77,0.35)]"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  socket?.emit("dispatch:panic-cleared", {
+                    communityId,
+                    serverId: selectedServerId,
+                    source: dispatchSource,
+                    timestamp: Date.now(),
+                  });
+                }}
+              >
+                <img width={30} height={30} src={ACTION_BTN_ICONS.clearEmerg} />
+              </button>
+
+              {/* <button
               id="panic-test-btn"
               data-interactive="true"
               className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#ff666699] bg-[#3A1212] text-[#FFB4B4] hover:bg-[#4A1919] text-sm leading-none font-semibold transition"
@@ -4122,20 +4495,20 @@ export default function CommunityConsole() {
               Panic Test
             </button> */}
 
-            <button
-              id="select-all-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3cf66433] bg-[#1E2A22] hover:bg-[#25342A] text-[#8FFFAE] text-sm leading-none font-semibold transition"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveZoneListening(true);
-              }}
-            >
-              Select All
-            </button>
-            
-            {/* <button
+              <button
+                id="select-all-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3cf66433] bg-[#1E2A22] hover:bg-[#25342A] text-[#8FFFAE] text-sm leading-none font-semibold transition"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveZoneListening(true);
+                }}
+              >
+                Select All
+              </button>
+
+              {/* <button
               id="key-stats-btn"
               data-interactive="true"
               className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
@@ -4148,29 +4521,46 @@ export default function CommunityConsole() {
               Key Stats
             </button> */}
 
-            <button
-              id="call-hist-btn"
-              data-interactive="true"
-              className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={(e) => {
-                e.stopPropagation();
-                setCallHistoryOpen(true);
-                void fetchCallHistory();
-              }}
-            >
-              Call Hist
-            </button>
+              <button
+                id="call-hist-btn"
+                data-interactive="true"
+                className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCallHistoryOpen(true);
+                  void fetchCallHistory();
+                }}
+              >
+                Call Hist
+              </button>
+
+              {!selectedServer?.infernoSecret ? null :
+                <button
+                  id="station-access-btn"
+                  data-interactive="true"
+                  className="inline-flex items-center justify-center px-3 h-14 rounded-md border border-[#3C83F61A] bg-[#1F2434] text-[#BFD8FF] hover:bg-[#253047] text-sm leading-none font-semibold transition"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleStationAccess();
+                    void fetchStationAccess();
+                    // setCallHistoryOpen(true);
+                    // void fetchCallHistory();
+                  }}
+                >
+                  Station Access
+                </button>
+              }
             </div>
           </div>
         </div>
-
 
         <Tab.Group
           selectedIndex={activeZoneIndex}
           onChange={setActiveZoneIndex}
         >
-          <Tab.List className="z-10 fixed top-[120px] w-full flex bg-[#0C1524] border-b border-gray-700">
+          <Tab.List className="z-10 fixed top-30 w-full flex bg-[#0C1524] border-b border-gray-700">
             {sortedZones.map((zone) => (
               <Tab
                 key={zone.id}
@@ -4200,8 +4590,7 @@ export default function CommunityConsole() {
                     onDragEnd={handleDragEnd}
                   >
                     {zone.channels.map((ch) => {
-                      const pos =
-                        autoWrapLayout?.[ch.id] ??
+                      const pos = autoWrapLayout?.[ch.id] ??
                         positions[ch.id] ?? { x: 20, y: 20 };
                       const volume = volumes[ch.id] ?? 50;
                       const listening = channelListening[ch.id] ?? false;
@@ -4215,16 +4604,16 @@ export default function CommunityConsole() {
                       const stateClass = panicActive
                         ? "bg-none [animation:panicFlash_1s_linear_infinite]"
                         : tx
-                        ? "border-red-400 shadow-[0_0_18px_rgba(248,113,113,0.5)]"
-                        : toneTx
-                          ? "border-orange-400 shadow-[0_0_18px_rgba(251,146,60,0.5)]"
-                          : rx
-                            ? "border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.4)]"
-                            : toneRx
-                              ? "border-yellow-400 shadow-[0_0_16px_rgba(250,204,21,0.45)]"
-                              : listening
-                                ? "border-[#3C83F6] shadow-[0_0_16px_rgba(60,131,246,0.35)]"
-                                : "border-[#2A3145]";
+                          ? "border-red-400 shadow-[0_0_18px_rgba(248,113,113,0.5)]"
+                          : toneTx
+                            ? "border-orange-400 shadow-[0_0_18px_rgba(251,146,60,0.5)]"
+                            : rx
+                              ? "border-emerald-400 shadow-[0_0_16px_rgba(16,185,129,0.4)]"
+                              : toneRx
+                                ? "border-yellow-400 shadow-[0_0_16px_rgba(250,204,21,0.45)]"
+                                : listening
+                                  ? "border-[#3C83F6] shadow-[0_0_16px_rgba(60,131,246,0.35)]"
+                                  : "border-[#2A3145]";
 
                       return (
                         <DraggableItem
@@ -4247,14 +4636,15 @@ export default function CommunityConsole() {
                               <button
                                 id="instantptt"
                                 data-interactive="true"
-                                className={`p-2 rounded-lg ${!channelChildrenEnabled
-                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                  : tx
-                                    ? "bg-red-500/80"
-                                    : listening
-                                      ? "bg-[#3C83F61A] border border-[#3C83F61A]"
-                                      : "bg-[#9CA3AF]"
-                                  }`}
+                                className={`p-2 rounded-lg ${
+                                  !channelChildrenEnabled
+                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                    : tx
+                                      ? "bg-red-500/80"
+                                      : listening
+                                        ? "bg-[#3C83F61A] border border-[#3C83F61A]"
+                                        : "bg-[#9CA3AF]"
+                                }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => {
                                   if (!channelChildrenEnabled) return;
@@ -4296,35 +4686,36 @@ export default function CommunityConsole() {
                                   Last SRC: {channelLastSrc[ch.id] ?? "None"}
                                 </span>
                                 <span
-                                  className={`text-xs ${panicActive
-                                    ? "text-red-300 animate-pulse"
-                                    : tx
-                                    ? "text-red-400"
-                                    : toneTx
-                                      ? "text-orange-300"
-                                      : rx
-                                        ? "text-emerald-400"
-                                        : toneRx
-                                          ? "text-yellow-300"
-                                          : listening
-                                            ? "text-[#3C83F6]"
-                                            : "text-[#6B7280]"
-                                    }`}
+                                  className={`text-xs ${
+                                    panicActive
+                                      ? "text-red-300 animate-pulse"
+                                      : tx
+                                        ? "text-red-400"
+                                        : toneTx
+                                          ? "text-orange-300"
+                                          : rx
+                                            ? "text-emerald-400"
+                                            : toneRx
+                                              ? "text-yellow-300"
+                                              : listening
+                                                ? "text-[#3C83F6]"
+                                                : "text-[#6B7280]"
+                                  }`}
                                 >
                                   State:{" "}
                                   {panicActive
                                     ? "ACTIVE PANIC"
                                     : tx
-                                    ? "Transmitting"
-                                    : toneTx
                                       ? "Transmitting"
-                                      : rx
-                                        ? "Receiving"
-                                        : toneRx
+                                      : toneTx
+                                        ? "Transmitting"
+                                        : rx
                                           ? "Receiving"
-                                          : listening
-                                            ? "Listening"
-                                            : "Not Active"}
+                                          : toneRx
+                                            ? "Receiving"
+                                            : listening
+                                              ? "Listening"
+                                              : "Not Active"}
                                 </span>
                               </div>
                             </div>
@@ -4332,10 +4723,11 @@ export default function CommunityConsole() {
                             <div className="flex flex-row gap-2">
                               <div
                                 data-interactive="true"
-                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${channelChildrenEnabled
-                                  ? "bg-[#9CA3AF]"
-                                  : "bg-[#6B7280]/70"
-                                  }`}
+                                className={`w-62.5 h-13 rounded-lg flex items-center px-3 ${
+                                  channelChildrenEnabled
+                                    ? "bg-[#9CA3AF]"
+                                    : "bg-[#6B7280]/70"
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => e.stopPropagation()}
                               >
@@ -4358,12 +4750,13 @@ export default function CommunityConsole() {
 
                               <button
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
-                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                  : pageState
-                                    ? "bg-amber-500/70"
-                                    : "bg-[#9CA3AF]"
-                                  }`}
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
+                                  !channelChildrenEnabled
+                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                    : pageState
+                                      ? "bg-amber-500/70"
+                                      : "bg-[#9CA3AF]"
+                                }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
@@ -4386,12 +4779,13 @@ export default function CommunityConsole() {
                               <button
                                 id="channel-hold-btn"
                                 data-interactive="true"
-                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${!channelChildrenEnabled
-                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                  : channelHoldActive[ch.id]
-                                    ? "bg-amber-500/70 border border-amber-300"
-                                    : "bg-[#9CA3AF]"
-                                  }`}
+                                className={`flex p-2 h-13 min-w-13 rounded-lg justify-center ${
+                                  !channelChildrenEnabled
+                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                    : channelHoldActive[ch.id]
+                                      ? "bg-amber-500/70 border border-amber-300"
+                                      : "bg-[#9CA3AF]"
+                                }`}
                                 disabled={!channelChildrenEnabled}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
@@ -4413,8 +4807,7 @@ export default function CommunityConsole() {
                     })}
 
                     {zone.toneSets?.map((t) => {
-                      const pos =
-                        autoWrapLayout?.[t.id] ??
+                      const pos = autoWrapLayout?.[t.id] ??
                         positions[t.id] ?? { x: 50, y: 50 };
                       const queued = toneQueue.includes(t.id);
 
@@ -4426,10 +4819,11 @@ export default function CommunityConsole() {
                           drag={editMode && !autoWrapLayout}
                         >
                           <DragCard
-                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${queued
-                              ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
-                              : "border-[#2A3145]"
-                              }`}
+                            className={`w-87.5 h-37.5 bg-linear-to-b from-[#1F2434] to-[#151A26] border ${
+                              queued
+                                ? "border-amber-400 shadow-[0_0_16px_rgba(251,191,36,0.4)]"
+                                : "border-[#2A3145]"
+                            }`}
                           >
                             <h1>{t.toneSet.name}</h1>
                             <small className="text-[#9CA3AF]">
@@ -4440,10 +4834,11 @@ export default function CommunityConsole() {
                               <button
                                 id="toneplay"
                                 disabled={tonePlaybackBusy}
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${tonePlaybackBusy
-                                  ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
-                                  : "bg-[#2A3145] active:bg-[#3C83F6]/40"
-                                  }`}
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#3C83F6] ${
+                                  tonePlaybackBusy
+                                    ? "bg-[#4B5563] opacity-60 cursor-not-allowed"
+                                    : "bg-[#2A3145] active:bg-[#3C83F6]/40"
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={async (e) => {
                                   if (tonePlaybackBusy) return;
@@ -4451,8 +4846,8 @@ export default function CommunityConsole() {
                                   const source =
                                     toneQueue.length > 0
                                       ? (zone.toneSets?.filter((entry) =>
-                                        toneQueue.includes(entry.id),
-                                      ) ?? [])
+                                          toneQueue.includes(entry.id),
+                                        ) ?? [])
                                       : [t];
                                   const packets: TonePacket[] = source.map(
                                     (entry) => ({
@@ -4475,18 +4870,15 @@ export default function CommunityConsole() {
                                   await transmitTonePackets(packets);
                                 }}
                               >
-                                <img
-                                  width={36}
-                                  height={36}
-                                  src={Pager}
-                                />
+                                <img width={36} height={36} src={Pager} />
                               </button>
                               <button
                                 id="toneselect"
-                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${queued
-                                  ? "bg-amber-500/70 ring-2 ring-amber-300"
-                                  : "bg-[#2A3145] hover:bg-[#38425c]"
-                                  }`}
+                                className={`p-2 h-12.5 w-12.5 rounded-lg transition ${
+                                  queued
+                                    ? "bg-amber-500/70 ring-2 ring-amber-300"
+                                    : "bg-[#2A3145] hover:bg-[#38425c]"
+                                }`}
                                 onPointerDown={(e) => e.stopPropagation()}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -4503,11 +4895,7 @@ export default function CommunityConsole() {
                                   }
                                 }}
                               >
-                                <img
-                                  width={36}
-                                  height={36}
-                                  src={DualPager}
-                                />
+                                <img width={36} height={36} src={DualPager} />
                               </button>
                             </div>
                           </DragCard>
@@ -4523,9 +4911,235 @@ export default function CommunityConsole() {
       </div>
 
       <AnimatePresence>
+        {showStationAccess && (
+          <motion.div
+            className="fixed inset-0 z-1200 bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => toggleStationAccess()}
+          >
+            <motion.div
+              className="w-full max-w-4xl max-h-[80vh] overflow-hidden rounded-lg border border-[#2A3145] bg-[#111827] shadow-[0_0_24px_rgba(0,0,0,0.5)]"
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-[#2A3145] px-4 py-3">
+                <div className="flex items-center gap-2 text-[#BFD8FF]">
+                  {/* <History size={16} /> */}
+                  <h2 className="text-base font-semibold select-none">
+                    Inferno Station Alert | Stations Access
+                  </h2>
+                </div>
+                <div className="flex items-center gap-2 select-none">
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] px-3 py-1.5 text-xs text-[#BFD8FF] hover:bg-[#253047]"
+                    onClick={() => void fetchStationAccess()}
+                    disabled={stationAccessLoading}
+                  >
+                    Refresh Stations
+                  </button>
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-[#3C83F61A] bg-[#1F2434] p-1.5 text-[#BFD8FF] hover:bg-[#253047]"
+                    onClick={() => toggleStationAccess()}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex h-[calc(80vh-60px)] gap-4 overflow-hidden p-3">
+                {/* Stations List */}
+                <div className="flex w-80 shrink-0 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
+                  <div className="border-b border-[#2A3145] p-4">
+                    <h3 className="select-none text-lg font-semibold text-[#BFD8FF]">
+                      Stations
+                    </h3>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {stationAccessData?.map((station: StationConfig) => (
+                      <div
+                        key={station.name}
+                        onClick={() => {
+                          if (selectedStation?.name === station.name) return;
+
+                          setSelectedStation(station);
+                          fetchStationDoors(station.name);
+                        }}
+                        className={`mb-2 cursor-pointer rounded-lg border p-3 ${
+                          selectedStation?.name === station.name
+                            ? "border-blue-500 bg-blue-500/10"
+                            : "border-[#2A3145] bg-[#1A2030]"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <p className="select-none text-sm text-white">
+                            {station.name}
+                          </p>
+
+                          {selectedStation?.name === station.name && (
+                            <span className="select-none text-xs text-blue-400">
+                              Selected
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right Side */}
+                <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden">
+                  {/* Controls Block */}
+                  <div className="shrink-0 rounded-lg border border-[#2A3145] bg-[#151A26]">
+                    <div className="flex items-center justify-between flex-1 border-b border-[#2A3145] p-3">
+                      <div>
+                        <h3 className="select-none text-lg font-semibold text-[#BFD8FF]">
+                          Station Controls
+                        </h3>
+
+                        <p className="text-xs text-[#64748B]">
+                          {selectedStation?.name ?? "No station selected"}
+                        </p>
+                      </div>
+
+                      {selectedStation && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={openAllDoors}
+                            className="rounded-md border border-green-500/20 bg-green-500/10 px-3 py-1.5 text-xs text-green-400 hover:bg-green-500/20"
+                          >
+                            Open All Doors
+                          </button>
+
+                          <button
+                            onClick={closeAllDoors}
+                            className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/20"
+                          >
+                            Close All Doors
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                      Coming Soon: Additional station controls and features will be available here.
+                    </div>
+                  </div>
+
+                  {/* Doors List */}
+                  <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[#2A3145] bg-[#151A26]">
+                    <div className="shrink-0 border-b border-[#2A3145] p-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="select-none text-lg font-semibold text-[#BFD8FF]">
+                          Doors
+                        </h3>
+
+                        <span className="select-none text-xs text-[#64748B]">
+                          {stationDoors.length} Doors
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                      {doorsLoading ? (
+                        <div className="flex h-full items-center justify-center">
+                          <p className="text-sm text-[#94A3B8]">
+                            Loading doors...
+                          </p>
+                        </div>
+                      ) : stationDoors.length > 0 ? (
+                        stationDoors.map((door: any, index: number) => (
+                          <div
+                            key={door.name}
+                            className="mb-2 rounded-lg border border-[#2A3145] bg-[#1A2030] p-3"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex flex-col gap-2 items-start">
+                                    <small className="text-xs text-[#64748B]">
+                                      Door: #{index + 1}
+                                    </small>
+                                    <div className="flex flex-row gap-2 items-center">
+                                      <div className="flex flex-row">
+                                        <div className="h-2 w-2 rounded-full bg-[#3C83F6] justify-center align-middle mt-1.5 mr-2" />
+                                        <p className="truncate text-sm text-white select-none">
+                                          {door.name}
+                                        </p>
+                                      </div>
+                                      <span
+                                        className={`rounded px-2 py-0.5 text-[10px] font-medium ${
+                                          door.state === "open"
+                                            ? "bg-green-500/20 text-green-400"
+                                            : "bg-red-500/20 text-red-400"
+                                        }`}
+                                      >
+                                        {door.state.toUpperCase()}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {door.isolated && (
+                                    <span className="rounded bg-yellow-500/20 px-2 py-0.5 text-[10px] font-medium text-yellow-400">
+                                      ISOLATED
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => toggleDoor(door)}
+                                  className={`rounded-md px-2 py-1 text-xs ${
+                                    door.state === "open"
+                                      ? "bg-red-500/20 text-red-400 hover:bg-red-500/30"
+                                      : "bg-green-500/20 text-green-400 hover:bg-green-500/30"
+                                  }`}
+                                >
+                                  {door.state === "open" ? "Close" : "Open"}
+                                </button>
+
+                                <button
+                                  hidden
+                                  onClick={() => {
+                                    setSelectedDoor(door);
+                                    setNewDoorName(door.name);
+                                    setRenameDoorModal(true);
+                                  }}
+                                  className="rounded-md bg-blue-500/20 px-2 py-1 text-xs text-blue-400 hover:bg-blue-500/30"
+                                >
+                                  Rename
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="flex h-full items-center justify-center">
+                          <p className="text-sm text-[#94A3B8]">
+                            {selectedStation
+                              ? "No doors available for this station."
+                              : "Select a station to view doors."}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {callHistoryOpen && (
           <motion.div
-            className="fixed inset-0 z-[1200] bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
+            className="fixed inset-0 z-1200 bg-black/60 backdrop-blur-[1px] flex items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -4562,95 +5176,97 @@ export default function CommunityConsole() {
               <div className="flex max-h-[calc(80vh-60px)] flex-col">
                 <div className="border-b border-[#2A3145] p-3">
                   <div className="flex items-center justify-between gap-2">
-                  <div className="inline-flex rounded-md border border-[#2A3145] bg-[#111827] p-1">
-                    <button
-                      className={`rounded px-3 py-1 text-xs transition ${
-                        callHistoryTypeFilter === "VOICE"
-                          ? "bg-[#3C83F61A] text-[#BFD8FF]"
-                          : "text-[#94A3B8] hover:text-[#BFD8FF]"
-                      }`}
-                      onClick={() => setCallHistoryTypeFilter("VOICE")}
-                    >
-                      Voice
-                    </button>
-                    <button
-                      className={`rounded px-3 py-1 text-xs transition ${
-                        callHistoryTypeFilter === "TONE"
-                          ? "bg-[#3C83F61A] text-[#BFD8FF]"
-                          : "text-[#94A3B8] hover:text-[#BFD8FF]"
-                      }`}
-                      onClick={() => setCallHistoryTypeFilter("TONE")}
-                    >
-                      Tone
-                    </button>
+                    <div className="inline-flex rounded-md border border-[#2A3145] bg-[#111827] p-1">
+                      <button
+                        className={`rounded px-3 py-1 text-xs transition ${
+                          callHistoryTypeFilter === "VOICE"
+                            ? "bg-[#3C83F61A] text-[#BFD8FF]"
+                            : "text-[#94A3B8] hover:text-[#BFD8FF]"
+                        }`}
+                        onClick={() => setCallHistoryTypeFilter("VOICE")}
+                      >
+                        Voice
+                      </button>
+                      <button
+                        className={`rounded px-3 py-1 text-xs transition ${
+                          callHistoryTypeFilter === "TONE"
+                            ? "bg-[#3C83F61A] text-[#BFD8FF]"
+                            : "text-[#94A3B8] hover:text-[#BFD8FF]"
+                        }`}
+                        onClick={() => setCallHistoryTypeFilter("TONE")}
+                      >
+                        Tone
+                      </button>
+                    </div>
+                    <p className="text-xs text-[#94A3B8]">
+                      {filteredCallHistoryItems.length} result
+                      {filteredCallHistoryItems.length === 1 ? "" : "s"}
+                    </p>
                   </div>
-                  <p className="text-xs text-[#94A3B8]">
-                    {filteredCallHistoryItems.length} result
-                    {filteredCallHistoryItems.length === 1 ? "" : "s"}
-                  </p>
-                </div>
                 </div>
                 <div className="flex-1 overflow-y-auto p-3">
-                {filteredCallHistoryItems.length === 0 ? (
-                  <p className="text-sm text-[#94A3B8]">
-                    {callHistoryLoading
-                      ? "Loading call history..."
-                      : `No ${callHistoryTypeFilter.toLowerCase()} history yet.`}
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {pagedCallHistoryItems.map((item) => {
-                      const audioSrc =
-                        item.audioUrl &&
-                        (item.audioUrl.startsWith("http") ||
-                          item.audioUrl.startsWith("data:"))
-                          ? item.audioUrl
-                          : item.audioUrl
-                            ? `${link("prod")}${item.audioUrl}`
-                            : null;
-                      return (
-                        <div
-                          key={item.id}
-                          className="rounded-lg border border-[#2A3145] bg-[#151A26] p-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm text-white">
-                              {item.eventType === "VOICE" ? "Voice" : "Tone"} |{" "}
-                              {item.source}
-                            </p>
-                            <p className="text-xs text-[#94A3B8]">
-                              {new Date(item.startedAt).toLocaleString()}
-                            </p>
-                          </div>
-                          <p className="mt-1 text-xs text-[#C7D2FE]">
-                            Channels:{" "}
-                            {item.channelIds.length > 0
-                              ? Array.from(
-                                new Set(
-                                  item.channelIds.map((id) => channelNameById[id] ?? id),
-                                ),
-                              ).join(", ")
-                              : "None"}
-                          </p>
-                          {item.eventType === "TONE" &&
-                            Array.isArray(item.tonePayload) &&
-                            item.tonePayload.length > 0 && (
-                              <p className="mt-1 text-xs text-[#C7D2FE]">
-                                Tones:{" "}
-                                {item.tonePayload
-                                  .map((tone) => tone?.name || tone?.id || "")
-                                  .filter(Boolean)
-                                  .join(", ")}
+                  {filteredCallHistoryItems.length === 0 ? (
+                    <p className="text-sm text-[#94A3B8]">
+                      {callHistoryLoading
+                        ? "Loading call history..."
+                        : `No ${callHistoryTypeFilter.toLowerCase()} history yet.`}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {pagedCallHistoryItems.map((item) => {
+                        const audioSrc =
+                          item.audioUrl &&
+                          (item.audioUrl.startsWith("http") ||
+                            item.audioUrl.startsWith("data:"))
+                            ? item.audioUrl
+                            : item.audioUrl
+                              ? `${link("prod")}${item.audioUrl}`
+                              : null;
+                        return (
+                          <div
+                            key={item.id}
+                            className="rounded-lg border border-[#2A3145] bg-[#151A26] p-3"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-sm text-white">
+                                {item.eventType === "VOICE" ? "Voice" : "Tone"}{" "}
+                                | {item.source}
                               </p>
-                            )}
-                          {item.eventType === "VOICE" && audioSrc ? (
-                            <AudioPlayer src={audioSrc} />
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                              <p className="text-xs text-[#94A3B8]">
+                                {new Date(item.startedAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <p className="mt-1 text-xs text-[#C7D2FE]">
+                              Channels:{" "}
+                              {item.channelIds.length > 0
+                                ? Array.from(
+                                    new Set(
+                                      item.channelIds.map(
+                                        (id) => channelNameById[id] ?? id,
+                                      ),
+                                    ),
+                                  ).join(", ")
+                                : "None"}
+                            </p>
+                            {item.eventType === "TONE" &&
+                              Array.isArray(item.tonePayload) &&
+                              item.tonePayload.length > 0 && (
+                                <p className="mt-1 text-xs text-[#C7D2FE]">
+                                  Tones:{" "}
+                                  {item.tonePayload
+                                    .map((tone) => tone?.name || tone?.id || "")
+                                    .filter(Boolean)
+                                    .join(", ")}
+                                </p>
+                              )}
+                            {item.eventType === "VOICE" && audioSrc ? (
+                              <AudioPlayer src={audioSrc} />
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center justify-between border-t border-[#2A3145] px-3 py-2">
                   <p className="text-xs text-[#94A3B8]">
